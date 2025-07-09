@@ -397,6 +397,9 @@
       // Adiciona o stream local ao peer, se o peer já estiver inicializado.
       if (peer) {
         peer.addStream(localStream);
+        // NOVO: Exibe o stream local no player principal para o host
+        remoteVideo.srcObject = localStream;
+        videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       } else {
         console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.');
         // Se o peer não estiver pronto, para o stream que acabou de ser obtido.
@@ -415,6 +418,9 @@
           if (peer) peer.removeStream(localStream); // Remove o stream do peer
           localStream.getTracks().forEach(track => track.stop());
           localStream = null;
+          // Quando o compartilhamento local termina, o player principal deve voltar a mostrar o placeholder
+          remoteVideo.srcObject = null; // Limpa o vídeo
+          videoPlaceholder.style.display = 'block'; // Mostra o placeholder
         }
       };
 
