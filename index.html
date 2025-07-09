@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Movie Room with Chat</title>
+<title>Salinha de Filme com Chat :3</title>
 
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -37,6 +37,13 @@
     font-style: italic;
     color: #9ca3af;
   }
+  /* Estilos para o modal de solicitação de entrada */
+  #joinRequestModal {
+    z-index: 1000; /* Garante que o modal esteja acima de outros elementos */
+  }
+  #waitingForApprovalModal {
+    z-index: 1000;
+  }
 </style>
 </head>
 <body>
@@ -44,10 +51,10 @@
 <div id="container" style="max-width: 480px; width: 100%;">
 
   <div id="menu">
-    <h1 class="text-3xl font-bold mb-2">Movie Room</h1>
-    <p class="mb-6">Crie uma sala para assistir com amigos</p>
+    <h1 class="text-3xl font-bold mb-2">Salinha de filme</h1>
+    <p class="mb-6">Crie uma sala para assistir com seus amigos :3</p>
 
-    <button id="btnCreateRoom" class="w-full py-3 mb-4 bg-indigo-600 rounded text-white font-bold">Create New Room</button>
+    <button id="btnCreateRoom" class="w-full py-3 mb-4 bg-indigo-600 rounded text-white font-bold">Criar Nova Sala</button>
 
     <div class="flex gap-2 mb-4">
       <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-3 rounded bg-gray-700 text-white uppercase" />
@@ -80,6 +87,27 @@
   </div>
 
 </div>
+
+<!-- Modal de Solicitação de Entrada (para o Admin) -->
+<div id="joinRequestModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden">
+  <div class="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
+    <p class="text-lg mb-4">Usuário <span id="requesterIdDisplay" class="font-bold text-indigo-400 break-all"></span> deseja entrar na sala.</p>
+    <div class="flex justify-center gap-4">
+      <button id="acceptJoinBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold transition duration-300">Aceitar</button>
+      <button id="rejectJoinBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold transition duration-300">Recusar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Espera por Aprovação (para o Usuário Tentando Entrar) -->
+<div id="waitingForApprovalModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden">
+  <div class="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
+    <p class="text-lg mb-4">Aguardando aprovação do host para entrar na sala...</p>
+    <p class="text-sm text-gray-400">Código da sala: <span id="waitingRoomCodeDisplay" class="font-bold text-indigo-400"></span></p>
+    <button id="cancelWaitingBtn" class="mt-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold transition duration-300">Cancelar</button>
+  </div>
+</div>
+
 
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
@@ -116,19 +144,35 @@
   const btnLeaveRoom = document.getElementById('btnLeaveRoom');
   const remoteVideo = document.getElementById('remoteVideo');
   const videoPlaceholder = document.getElementById('videoPlaceholder');
-  const btnStartShare = document.getElementById('btnStartShare');
+  const btnStartShare = document = document.getElementById('btnStartShare');
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput');
   const sendChatBtn = document.getElementById('sendChatBtn');
+
+  // Elementos do Modal de Solicitação de Entrada (para o Admin)
+  const joinRequestModal = document.getElementById('joinRequestModal');
+  const requesterIdDisplay = document.getElementById('requesterIdDisplay');
+  const acceptJoinBtn = document.getElementById('acceptJoinBtn');
+  const rejectJoinBtn = document.getElementById('rejectJoinBtn');
+
+  // Elementos do Modal de Espera por Aprovação (para o Usuário Tentando Entrar)
+  const waitingForApprovalModal = document.getElementById('waitingForApprovalModal');
+  const waitingRoomCodeDisplay = document.getElementById('waitingRoomCodeDisplay');
+  const cancelWaitingBtn = document.getElementById('cancelWaitingBtn');
+
 
   let userId = null;
   let currentRoomId = null;
   let peer = null;
   let localStream = null;
+  let isRoomCreator = false; // Flag para identificar se o usuário é o criador da sala
 
   let unsubscribeRoom = null;
   let unsubscribeChat = null;
   let unsubscribeCandidates = null;
+  let unsubscribeJoinRequests = null; // Novo listener para solicitações de entrada
+  let unsubscribeMyJoinRequest = null; // Novo listener para a própria solicitação de entrada
+
 
   /**
    * Exibe uma mensagem no painel de chat.
@@ -206,6 +250,7 @@
 
     currentRoomId = generateRoomCode();
     roomCodeDisplay.textContent = currentRoomId;
+    isRoomCreator = true; // Define o usuário como criador da sala
 
     const roomRef = db.collection('movie-rooms').doc(currentRoomId);
     const callerCandidates = roomRef.collection('callerCandidates');
@@ -255,6 +300,20 @@
     }, error => {
       console.error("Erro ao ouvir os candidatos do callee:", error);
       showMessage("Erro na comunicação de rede.", null, true);
+    });
+
+    // NOVO: Listener para solicitações de entrada (apenas para o criador da sala)
+    const joinRequestsRef = roomRef.collection('joinRequests');
+    unsubscribeJoinRequests = joinRequestsRef.onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added' && change.doc.data().status === 'pending') {
+          const requesterId = change.doc.data().requesterId;
+          const requestId = change.doc.id;
+          showJoinRequestModal(requesterId, requestId);
+        }
+      });
+    }, error => {
+      console.error("Erro ao ouvir solicitações de entrada:", error);
     });
 
     // Evento de conexão bem-sucedida do WebRTC.
@@ -307,6 +366,7 @@
 
     currentRoomId = code;
     roomCodeDisplay.textContent = currentRoomId;
+    isRoomCreator = false; // Define o usuário como não criador da sala
 
     const roomRef = db.collection('movie-rooms').doc(currentRoomId);
     const roomSnapshot = await roomRef.get();
@@ -320,66 +380,91 @@
 
     const roomData = roomSnapshot.data();
 
-    // Inicializa o SimplePeer como não iniciador.
-    // O stream local é adicionado apenas quando o usuário clica em "Compartilhar Tela".
-    peer = new SimplePeer({ initiator: false, trickle: true });
+    // NOVO: Envia solicitação de entrada e espera por aprovação
+    const joinRequestsRef = roomRef.collection('joinRequests');
+    const myJoinRequestRef = await joinRequestsRef.add({
+      requesterId: userId,
+      status: 'pending',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-    // Sinaliza o peer com a oferta recebida do criador da sala.
-    peer.signal(roomData.offer);
+    waitingRoomCodeDisplay.textContent = currentRoomId;
+    waitingForApprovalModal.classList.remove('hidden'); // Mostra o modal de espera
 
-    // Listener para sinais do SimplePeer.
-    // Envia a resposta (answer) e os ICE candidates para o Firestore.
-    peer.on('signal', async data => {
-      if (data.type === 'answer') {
-        await roomRef.update({ answer: data });
-      } else if (data.candidate) {
-        const calleeCandidates = roomRef.collection('calleeCandidates');
-        await calleeCandidates.add(data);
+    // Listener para a própria solicitação de entrada
+    unsubscribeMyJoinRequest = myJoinRequestRef.onSnapshot(async snapshot => {
+      const data = snapshot.data();
+      if (data && data.status === 'accepted') {
+        waitingForApprovalModal.classList.add('hidden'); // Esconde o modal de espera
+        showMessage('Sua solicitação foi aceita! Conectando...', null, true);
+
+        // Prossegue com a conexão WebRTC após a aceitação
+        peer = new SimplePeer({ initiator: false, trickle: true });
+        peer.signal(roomData.offer);
+
+        peer.on('signal', async data => {
+          if (data.type === 'answer') {
+            await roomRef.update({ answer: data });
+          } else if (data.candidate) {
+            const calleeCandidates = roomRef.collection('calleeCandidates');
+            await calleeCandidates.add(data);
+          }
+        });
+
+        const callerCandidates = roomRef.collection('callerCandidates');
+        unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
+          snapshot.docChanges().forEach(change => {
+            if (change.type === 'added') {
+              peer.signal(change.doc.data());
+            }
+          });
+        }, error => {
+          console.error("Erro ao ouvir os candidatos do caller:", error);
+          showMessage("Erro na comunicação de rede.", null, true);
+        });
+
+        peer.on('connect', () => {
+          showMessage('Amigo conectado!', null, true);
+        });
+
+        peer.on('stream', stream => {
+          videoPlaceholder.style.display = 'none';
+          remoteVideo.srcObject = stream;
+        });
+
+        peer.on('close', () => {
+          showMessage('Amigo desconectado.', null, true);
+          hangUp();
+        });
+
+        peer.on('error', err => {
+          alert('Erro na conexão: ' + err.message);
+          console.error("Erro SimplePeer:", err);
+          hangUp();
+        });
+
+        menu.style.display = 'none';
+        app.style.display = 'flex';
+        setupChatListener();
+
+      } else if (data && data.status === 'rejected') {
+        waitingForApprovalModal.classList.add('hidden'); // Esconde o modal de espera
+        alert('Sua solicitação para entrar na sala foi recusada.');
+        hangUp(); // Volta para o menu
+      } else if (!data) { // Se o documento for deletado (ex: admin não aceitou/rejeitou e limpou)
+        waitingForApprovalModal.classList.add('hidden');
+        alert('Sua solicitação expirou ou foi cancelada.');
+        hangUp();
       }
-    });
-
-    // Listener para os ICE candidates do outro peer (caller).
-    const callerCandidates = roomRef.collection('callerCandidates');
-    unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === 'added') {
-          // Adiciona os ICE candidates recebidos ao peer.
-          peer.signal(change.doc.data());
-        }
-      });
     }, error => {
-      console.error("Erro ao ouvir os candidatos do caller:", error);
-      showMessage("Erro na comunicação de rede.", null, true);
-    });
-
-    // Eventos de conexão, stream, fechamento e erro do WebRTC (mesmos do criador da sala).
-    peer.on('connect', () => {
-      showMessage('Amigo conectado!', null, true);
-    });
-
-    peer.on('stream', stream => {
-      videoPlaceholder.style.display = 'none';
-      remoteVideo.srcObject = stream;
-    });
-
-    peer.on('close', () => {
-      showMessage('Amigo desconectado.', null, true);
+      console.error("Erro ao ouvir sua solicitação de entrada:", error);
+      waitingForApprovalModal.classList.add('hidden');
+      alert('Erro ao verificar o status da solicitação. Tente novamente.');
       hangUp();
     });
-
-    peer.on('error', err => {
-      alert('Erro na conexão: ' + err.message);
-      console.error("Erro SimplePeer:", err);
-      hangUp();
-    });
-
-    // Esconde o menu e mostra a interface do aplicativo.
-    menu.style.display = 'none';
-    app.style.display = 'flex';
-    setupChatListener(); // Inicia o listener de chat para a sala
 
     btnJoinRoom.disabled = false;
-    btnJoinRoom.textContent = 'Entrar'; // Restaura o texto do botão
+    btnJoinRoom.textContent = 'Entrar';
   };
 
   // Evento de clique para o botão "Compartilhar Tela"
@@ -487,10 +572,52 @@
     });
   }
 
+  /**
+   * Exibe o modal de solicitação de entrada para o administrador.
+   * @param {string} requesterId - O ID do usuário que está solicitando a entrada.
+   * @param {string} requestId - O ID do documento da solicitação no Firestore.
+   */
+  function showJoinRequestModal(requesterId, requestId) {
+    requesterIdDisplay.textContent = requesterId;
+    joinRequestModal.classList.remove('hidden');
+
+    // Remove listeners anteriores para evitar duplicação
+    acceptJoinBtn.onclick = null;
+    rejectJoinBtn.onclick = null;
+
+    // Configura os botões do modal
+    acceptJoinBtn.onclick = async () => {
+      await db.collection('movie-rooms').doc(currentRoomId).collection('joinRequests').doc(requestId).update({ status: 'accepted' });
+      joinRequestModal.classList.add('hidden');
+      showMessage(`Solicitação de ${requesterId} aceita.`, null, true);
+    };
+
+    rejectJoinBtn.onclick = async () => {
+      await db.collection('movie-rooms').doc(currentRoomId).collection('joinRequests').doc(requestId).update({ status: 'rejected' });
+      joinRequestModal.classList.add('hidden');
+      showMessage(`Solicitação de ${requesterId} recusada.`, null, true);
+    };
+  }
+
   // Evento de clique para o botão "Sair da Sala"
   btnLeaveRoom.onclick = () => {
     hangUp(); // Chama a função para limpar e resetar tudo
   };
+
+  // Evento de clique para o botão "Cancelar" no modal de espera por aprovação
+  cancelWaitingBtn.onclick = async () => {
+    if (unsubscribeMyJoinRequest) {
+      unsubscribeMyJoinRequest(); // Para de ouvir a própria solicitação
+      unsubscribeMyJoinRequest = null;
+    }
+    // Opcional: Remover a solicitação do Firestore se o usuário cancelar antes da aprovação
+    // Isso requer que o ID da solicitação seja armazenado em uma variável global temporária
+    // Para simplificar, estamos apenas parando de ouvir e resetando a UI.
+    hangUp();
+    waitingForApprovalModal.classList.add('hidden');
+    alert('Você cancelou a solicitação de entrada.');
+  };
+
 
   /**
    * Função para encerrar a conexão WebRTC, parar streams e resetar o estado da UI e variáveis.
@@ -519,16 +646,31 @@
       unsubscribeCandidates();
       unsubscribeCandidates = null;
     }
+    if (unsubscribeJoinRequests) { // Desinscreve o listener de solicitações (para o criador)
+      unsubscribeJoinRequests();
+      unsubscribeJoinRequests = null;
+    }
+    if (unsubscribeMyJoinRequest) { // Desinscreve o listener da própria solicitação (para quem tenta entrar)
+      unsubscribeMyJoinRequest();
+      unsubscribeMyJoinRequest = null;
+    }
+
 
     // Reseta variáveis de estado
     currentRoomId = null;
     remoteVideo.srcObject = null; // Limpa o vídeo remoto
     chatMessages.innerHTML = ''; // Limpa as mensagens do chat
     roomInput.value = ''; // Limpa o input do código da sala
+    isRoomCreator = false; // Reseta a flag do criador da sala
 
     // Alterna a visibilidade da UI (mostra o menu, esconde o app)
     menu.style.display = 'block';
     app.style.display = 'none';
+
+    // Esconde quaisquer modais abertos
+    joinRequestModal.classList.add('hidden');
+    waitingForApprovalModal.classList.add('hidden');
+
 
     // Reseta o estado dos botões e placeholders
     btnCreateRoom.disabled = false;
