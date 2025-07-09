@@ -63,7 +63,8 @@
       <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded">Sair da Sala</button>
     </div>
 
-    <video id="remoteVideo" autoplay playsinline class="w-full h-64 bg-black rounded mb-4"></video>
+    <!-- Adicionado o atributo 'muted' para garantir a reprodução automática em todos os navegadores -->
+    <video id="remoteVideo" autoplay playsinline muted class="w-full h-64 bg-black rounded mb-4"></video>
 
     <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
       <p>Esperando o host compartilhar a tela...</p>
