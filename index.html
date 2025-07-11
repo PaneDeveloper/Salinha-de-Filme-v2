@@ -267,24 +267,32 @@
     // Evento de conexão bem-sucedida do WebRTC.
     peer.on('connect', () => {
       showMessage('Amigo conectado!', null, true);
+      console.log('WebRTC Peer Conectado!'); // LOG: Conexão WebRTC estabelecida
     });
 
     // Evento de recebimento de stream de vídeo/áudio do outro peer.
     peer.on('stream', stream => {
+      console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
       videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       remoteVideo.srcObject = stream; // Define o stream como fonte do vídeo remoto
+      console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
+      // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
+      if (remoteVideo.paused) {
+        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
+      }
     });
 
     // Evento de fechamento da conexão WebRTC.
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
+      console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
       hangUp(); // Reseta a UI e o estado
     });
 
     // Evento de erro na conexão WebRTC.
     peer.on('error', err => {
       alert('Erro na conexão: ' + err.message);
-      console.error("Erro SimplePeer:", err);
+      console.error("Erro SimplePeer:", err); // LOG: Erro no SimplePeer
       hangUp(); // Reseta a UI e o estado
     });
 
@@ -347,7 +355,8 @@
         if (change.type === 'added') {
           peer.signal(change.doc.data());
         }
-      });
+      }
+      );
     }, error => {
       console.error("Erro ao ouvir os candidatos do caller:", error);
       showMessage("Erro na comunicação de rede.", null, true);
@@ -355,21 +364,29 @@
 
     peer.on('connect', () => {
       showMessage('Amigo conectado!', null, true);
+      console.log('WebRTC Peer Conectado!'); // LOG: Conexão WebRTC estabelecida
     });
 
     peer.on('stream', stream => {
+      console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
       videoPlaceholder.style.display = 'none';
       remoteVideo.srcObject = stream;
+      console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
+      // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
+      if (remoteVideo.paused) {
+        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
+      }
     });
 
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
+      console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
       hangUp();
     });
 
     peer.on('error', err => {
       alert('Erro na conexão: ' + err.message);
-      console.error("Erro SimplePeer:", err);
+      console.error("Erro SimplePeer:", err); // LOG: Erro no SimplePeer
       hangUp();
     });
 
@@ -389,19 +406,22 @@
         if (peer) peer.removeStream(localStream); // Remove do peer se ele existir
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
+        console.log('Stream local existente removido.'); // LOG: Stream existente removido
       }
 
       // Solicita acesso à tela e áudio do usuário.
       localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      console.log('Stream local obtido:', localStream); // LOG: Stream local obtido
 
       // Adiciona o stream local ao peer, se o peer já estiver inicializado.
       if (peer) {
         peer.addStream(localStream);
+        console.log('Stream local adicionado ao peer.'); // LOG: Stream local adicionado
         // NOVO: Exibe o stream local no player principal para o host
         remoteVideo.srcObject = localStream;
         videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       } else {
-        console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.');
+        console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.'); // LOG: Peer não inicializado
         // Se o peer não estiver pronto, para o stream que acabou de ser obtido.
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
@@ -412,6 +432,7 @@
       // Listener para quando o compartilhamento de tela é encerrado (ex: usuário clica em "Parar compartilhamento").
       localStream.getVideoTracks()[0].onended = () => {
         showMessage('Compartilhamento de tela encerrado.', null, true);
+        console.log('Compartilhamento de tela encerrado pelo usuário.'); // LOG: Compartilhamento encerrado
         btnStartShare.disabled = false;
         btnStartShare.textContent = 'Compartilhar Tela';
         if (localStream) {
@@ -428,7 +449,7 @@
       btnStartShare.textContent = 'Compartilhando...';
     } catch (err) {
       alert('Não foi possível compartilhar a tela. Verifique permissões do navegador ou se você já está compartilhando.');
-      console.error("Erro ao compartilhar tela:", err);
+      console.error("Erro ao compartilhar tela:", err); // LOG: Erro ao compartilhar tela
     }
   };
 
