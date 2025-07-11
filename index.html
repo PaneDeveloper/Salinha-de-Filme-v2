@@ -64,7 +64,8 @@
     </div>
 
     <!-- Adicionado o atributo 'muted' para garantir a reprodução automática em todos os navegadores -->
-    <video id="remoteVideo" autoplay playsinline muted class="w-full h-64 bg-black rounded mb-4"></video>
+    <!-- Adicionado 'controls' para depuração e controle manual se necessário -->
+    <video id="remoteVideo" autoplay playsinline muted controls class="w-full h-64 bg-black rounded mb-4"></video>
 
     <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
       <p>Esperando o host compartilhar a tela...</p>
@@ -448,8 +449,15 @@
       btnStartShare.disabled = true;
       btnStartShare.textContent = 'Compartilhando...';
     } catch (err) {
-      alert('Não foi possível compartilhar a tela. Verifique permissões do navegador ou se você já está compartilhando.');
       console.error("Erro ao compartilhar tela:", err); // LOG: Erro ao compartilhar tela
+      // Mensagem de erro mais útil para o usuário
+      if (err.name === 'NotReadableError') {
+        alert('Não foi possível iniciar o compartilhamento de tela. Por favor, certifique-se de que você concedeu permissão ao navegador para gravar a tela no pop-up de seleção.');
+      } else if (err.name === 'NotAllowedError') {
+        alert('Permissão para compartilhar a tela negada. Por favor, verifique as configurações de privacidade do seu navegador e sistema operacional para permitir a gravação de tela.');
+      } else {
+        alert('Ocorreu um erro inesperado ao tentar compartilhar a tela: ' + err.message);
+      }
     }
   };
 
