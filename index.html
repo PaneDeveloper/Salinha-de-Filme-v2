@@ -86,15 +86,22 @@
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
 
-<!--
-  IMPORTANTE: Este arquivo (firebase-config.js) DEVE conter suas credenciais do Firebase.
-  Ele NÃO deve ser enviado para o GitHub. Crie um arquivo .gitignore para excluí-lo.
--->
-<script src="./firebase-config.js"></script>
-
 <script>
-  // Inicializa o Firebase com a configuração fornecida pelo firebase-config.js
-  // Certifique-se de que a variável 'firebaseConfig' esteja definida em firebase-config.js
+  // === CONFIGURAÇÃO FIREBASE ===
+  // IMPORTANTE: Esta configuração está diretamente no HTML para que o app funcione
+  // ao ser aberto localmente no navegador sem um servidor.
+  // Se você postar este arquivo no GitHub, suas chaves estarão visíveis publicamente.
+  // Para projetos em produção, use variáveis de ambiente ou um servidor backend para proteger as chaves.
+  const firebaseConfig = {
+    apiKey: "AIzaSyA3HIqR4rT3NANEulauFy_-3OkuWOqYhqk", // COLOQUE SUA API KEY REAL AQUI
+    authDomain: "salinha-de-filme.firebaseapp.com",
+    projectId: "salinha-de-filme",
+    storageBucket: "salinha-de-filme.firebasestorage.app",
+    messagingSenderId: "589071044223",
+    appId: "1:589071044223:web:2e8c6e0b4644bc99fbf94a"
+  };
+// CARA, DANE-SE A API KEY, MANO, DANE-SE, NAO QUERO SABER DE CORRIGIR OS BUGS, SÓ PELO AMOR DE DEUS, USA O SITE NORMAL MANO... AAAAAAAAAAAAAAAAAAAAAAAA
+  // Inicializa o Firebase com a configuração fornecida
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
@@ -540,8 +547,10 @@
     btnJoinRoom.disabled = true;
     // O auth.onAuthStateChanged já lida com o signInAnonymously.
     // Não é necessário chamar signInAnonymously diretamente aqui.
+  
   };
 </script>
 
 </body>
 </html>
+  
