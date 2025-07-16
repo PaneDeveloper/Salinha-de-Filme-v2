@@ -114,13 +114,13 @@
   const app = document.getElementById('app');
   const roomCodeDisplay = document.getElementById('roomCodeDisplay');
   const btnLeaveRoom = document.getElementById('btnLeaveRoom');
-  const localPreviewVideo = document.getElementById('localPreviewVideo'); // NOVO: elemento de vídeo para pré-visualização local
-  const remoteVideo = document.getElementById('remoteVideo');
+  const localPreviewVideo = document.getElementById('localPreviewVideo'); // Elemento de vídeo para pré-visualização local do host
+  const remoteVideo = document.getElementById('remoteVideo'); // Elemento de vídeo para o stream recebido do outro peer
   const videoPlaceholder = document.getElementById('videoPlaceholder');
   const btnStartShare = document.getElementById('btnStartShare');
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput');
-  const sendChatBtn = document.getElementById('sendChatBtn'); // Corrigido aqui, estava `document = document.getElementById`
+  const sendChatBtn = document.getElementById('sendChatBtn');
 
   // Variáveis de estado
   let userId = null;
@@ -271,8 +271,9 @@
     // Evento de recebimento de stream de vídeo/áudio do outro peer.
     peer.on('stream', stream => {
       console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
+      // O remoteVideo sempre exibe o stream DO OUTRO PARTE (seja tela ou webcam)
       videoPlaceholder.style.display = 'none'; // Esconde o placeholder
-      localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização local se o stream do amigo chegar
+      localPreviewVideo.style.display = 'none'; // Se o host está recebendo um stream, esconde a própria pré-visualização
       remoteVideo.srcObject = stream; // Define o stream como fonte do vídeo remoto
       console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
       // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
@@ -285,9 +286,7 @@
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
       console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
-      // Se for o criador, ele decide se vai apagar a sala ao sair.
-      // Se não for o criador, a sala deve permanecer.
-      // A lógica de limpeza da sala foi movida para o hangUp, com verificação de isRoomCreator.
+      // A lógica de limpeza da sala está no hangUp, com verificação de isRoomCreator.
       hangUp();
     });
 
@@ -369,15 +368,15 @@
       console.log('WebRTC Peer Conectado!'); // LOG: Conexão WebRTC estabelecida
     });
 
+    // === PONTO CHAVE: RECEBIMENTO DO STREAM DO HOST PELO CLIENTE ===
     peer.on('stream', stream => {
-      console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
-      videoPlaceholder.style.display = 'none';
-      localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização local
-      remoteVideo.srcObject = stream;
-      console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
-      // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
+      console.log('Recebido stream remoto pelo cliente:', stream); // LOG: Stream remoto recebido
+      videoPlaceholder.style.display = 'none'; // Esconde o placeholder
+      localPreviewVideo.style.display = 'none'; // Garante que o vídeo de pré-visualização do host esteja escondido para o cliente
+      remoteVideo.srcObject = stream; // O CLIENTE define o stream do host como fonte do SEU vídeo principal
+      console.log('remoteVideo srcObject definido no cliente:', remoteVideo.srcObject);
       if (remoteVideo.paused) {
-        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
+        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto no cliente:", e));
       }
     });
 
@@ -410,44 +409,43 @@
         if (peer) peer.removeStream(localStream); // Remove do peer se ele existir
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
-        console.log('Stream local existente removido.'); // LOG: Stream existente removido
+        console.log('Stream local existente removido.');
       }
 
       // Solicita acesso à tela e áudio do usuário.
       localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      console.log('Stream local obtido:', localStream); // LOG: Stream local obtido
+      console.log('Stream local obtido:', localStream);
 
-      // Adiciona o stream local ao peer, se o peer já estiver inicializado.
+      // Adiciona o stream local ao peer para ser ENVIADO aos outros.
       if (peer) {
         peer.addStream(localStream);
-        console.log('Stream local adicionado ao peer.'); // LOG: Stream local adicionado
+        console.log('Stream local adicionado ao peer para transmissão.');
         
-        // NOVO: Exibe o stream local no player de pré-visualização para o host
+        // Exibe o stream local no player de pré-visualização PARA O HOST
         localPreviewVideo.srcObject = localStream;
-        localPreviewVideo.style.display = 'block'; // Mostra a pré-visualização
+        localPreviewVideo.style.display = 'block'; // Mostra a pré-visualização do host
         videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       } else {
-        console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.'); // LOG: Peer não inicializado
-        // Se o peer não estiver pronto, para o stream que acabou de ser obtido.
+        console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.');
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
         alert('Por favor, crie ou entre em uma sala antes de compartilhar a tela.');
         return;
       }
 
-      // Listener para quando o compartilhamento de tela é encerrado (ex: usuário clica em "Parar compartilhamento").
+      // Listener para quando o compartilhamento de tela é encerrado.
       localStream.getVideoTracks()[0].onended = () => {
         showMessage('Compartilhamento de tela encerrado.', null, true);
-        console.log('Compartilhamento de tela encerrado pelo usuário.'); // LOG: Compartilhamento encerrado
+        console.log('Compartilhamento de tela encerrado pelo usuário.');
         btnStartShare.disabled = false;
         btnStartShare.textContent = 'Compartilhar Tela';
         if (localStream) {
           if (peer) peer.removeStream(localStream); // Remove o stream do peer
           localStream.getTracks().forEach(track => track.stop());
           localStream = null;
-          // Quando o compartilhamento local termina, o player principal deve voltar a mostrar o placeholder
-          localPreviewVideo.srcObject = null; // Limpa o vídeo de pré-visualização
-          localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização
+          // Quando o compartilhamento local termina, o player de pré-visualização deve ser limpo
+          localPreviewVideo.srcObject = null;
+          localPreviewVideo.style.display = 'none';
           videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
         }
       };
@@ -455,8 +453,7 @@
       btnStartShare.disabled = true;
       btnStartShare.textContent = 'Compartilhando...';
     } catch (err) {
-      console.error("Erro ao compartilhar tela:", err); // LOG: Erro ao compartilhar tela
-      // Mensagem de erro mais útil para o usuário
+      console.error("Erro ao compartilhar tela:", err);
       if (err.name === 'NotReadableError') {
         alert('Não foi possível iniciar o compartilhamento de tela. Por favor, certifique-se de que você concedeu permissão ao navegador para gravar a tela no pop-up de seleção.');
       } else if (err.name === 'NotAllowedError') {
@@ -556,13 +553,13 @@
     }
 
     // Lógica para apagar a sala APENAS SE FOR O CRIADOR E ESTIVER SAINDO
+    // E a saída for iniciada pelo usuário (clique no botão 'Sair da Sala')
     if (isRoomCreator && currentRoomId && userInitiated) {
       try {
         const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-        // Apaga a sala e suas subcoleções (chat, candidatos)
-        // Nota: Apagar subcoleções no Firestore requer mais lógica ou uma Cloud Function.
-        // Para simplificar, vou apenas apagar o documento principal da sala.
-        // Se precisar apagar subcoleções, você terá que iterar sobre elas ou usar uma função de cloud.
+        // Apaga o documento principal da sala.
+        // Para apagar subcoleções (chat, candidatos) automaticamente, seria necessário
+        // uma Cloud Function no Firebase ou iterar e apagar manualmente (mais complexo no cliente).
         await roomRef.delete();
         console.log(`Sala ${currentRoomId} apagada pelo criador.`);
       } catch (error) {
@@ -597,27 +594,38 @@
   // Adiciona um listener para o evento beforeunload para o caso de atualizar a página ou fechar a aba
   window.addEventListener('beforeunload', () => {
     // Se for o criador da sala e ele está saindo/atualizando, tenta limpar a sala.
-    // userInitiated = false, pois não é um clique explícito no botão "Sair".
-    // A chamada assíncrona aqui pode não ter tempo de completar antes da página descarregar,
-    // mas é a melhor tentativa via cliente. Uma Cloud Function seria mais robusta.
+    // É importante notar que operações assíncronas no beforeunload podem não ser concluídas.
+    // Uma Cloud Function é a forma mais robusta de garantir a limpeza de salas abandonadas.
     if (isRoomCreator && currentRoomId) {
-      // Usar navigator.sendBeacon ou manter a sala para um mecanismo de limpeza externo seria mais confiável.
-      // Para este cenário, faremos uma tentativa de apagar ao descarregar a página.
+      // Tentativa de apagar a sala. Não há garantia de sucesso.
       db.collection('movie-rooms').doc(currentRoomId).delete()
-        .then(() => console.log("Sala apagada ao descarregar a página (criador)."))
-        .catch(e => console.error("Erro ao apagar sala ao descarregar (criador):", e));
+        .then(() => console.log("Sala tentando ser apagada ao descarregar a página (criador)."))
+        .catch(e => console.error("Erro ao tentar apagar sala ao descarregar (criador):", e));
     }
   });
 
 
   // Inicialização da aplicação quando a janela é carregada.
-  // A autenticação inicial é tratada pelo auth.onAuthStateChanged.
-  window.onload = () => {
-    btnCreateRoom.disabled = true; // Desabilita botões até a autenticação
-    btnJoinRoom.disabled = true;
-    // O auth.onAuthStateChanged já lida com o signInAnonymously.
-    // Não é necessário chamar signInAnonymously diretamente aqui.
-  };
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      userId = user.uid;
+      authStatus.textContent = 'Conectado com sucesso!';
+      btnCreateRoom.disabled = false;
+      btnJoinRoom.disabled = false;
+      console.log("Usuário autenticado com ID:", userId);
+    } else {
+      userId = null;
+      authStatus.textContent = 'Autenticando...';
+      btnCreateRoom.disabled = true;
+      btnJoinRoom.disabled = true;
+      if (!auth.currentUser) {
+        auth.signInAnonymously().catch(err => {
+          authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
+          console.error("Erro na autenticação anônima:", err);
+        });
+      }
+    }
+  });
 </script>
 
 </body>
