@@ -114,8 +114,8 @@
   const app = document.getElementById('app');
   const roomCodeDisplay = document.getElementById('roomCodeDisplay');
   const btnLeaveRoom = document.getElementById('btnLeaveRoom');
-  const localPreviewVideo = document.getElementById('localPreviewVideo'); // Elemento de vídeo para pré-visualização local do host
-  const remoteVideo = document.getElementById('remoteVideo'); // Elemento de vídeo para o stream recebido do outro peer
+  const localPreviewVideo = document.getElementById('localPreviewVideo');
+  const remoteVideo = document.getElementById('remoteVideo');
   const videoPlaceholder = document.getElementById('videoPlaceholder');
   const btnStartShare = document.getElementById('btnStartShare');
   const chatMessages = document.getElementById('chatMessages');
@@ -154,33 +154,22 @@
   }
 
   // Listener de estado de autenticação do Firebase.
-  // Garante que o usuário esteja autenticado (anonimamente) e atualiza a UI.
   auth.onAuthStateChanged(user => {
     if (user) {
       userId = user.uid;
       authStatus.textContent = 'Conectado com sucesso!';
       btnCreateRoom.disabled = false;
       btnJoinRoom.disabled = false;
-      console.log("Usuário autenticado com ID:", userId); // Log para depuração
+      console.log("Usuário autenticado com ID:", userId);
     } else {
       userId = null;
       authStatus.textContent = 'Autenticando...';
       btnCreateRoom.disabled = true;
       btnJoinRoom.disabled = true;
-      // Tenta autenticar anonimamente se não houver usuário logado
       if (!auth.currentUser) {
         auth.signInAnonymously().catch(err => {
           authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
           console.error("Erro na autenticação anônima:", err);
-          // IMPORTANTE: Se você receber o erro "CONFIGURATION_NOT_FOUND",
-          // isso geralmente significa que o método de login "Anônimo"
-          // NÃO ESTÁ HABILITADO no seu projeto Firebase.
-          // Para corrigir:
-          // 1. Vá para o Console do Firebase (console.firebase.google.com).
-          // 2. Selecione seu projeto "Salinha de Filme".
-          // 3. No menu lateral, clique em "Authentication" (Autenticação).
-          // 4. Vá para a aba "Sign-in method" (Método de login).
-          // 5. Encontre "Anonymous" (Anônimo) e HABILITE-O.
         });
       }
     }
@@ -216,29 +205,23 @@
     const roomRef = db.collection('movie-rooms').doc(currentRoomId);
     const callerCandidates = roomRef.collection('callerCandidates');
 
-    // Inicializa o SimplePeer como iniciador.
     peer = new SimplePeer({ initiator: true, trickle: true });
 
-    // Listener para sinais do SimplePeer.
-    // Envia a oferta inicial e os ICE candidates para o Firestore.
     peer.on('signal', async data => {
       if (data.type === 'offer') {
         await roomRef.set({
           offer: data,
           creatorId: userId,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        }, { merge: true });
       } else if (data.candidate) {
         await callerCandidates.add(data);
       }
     });
 
-    // Listener para o documento da sala no Firestore.
-    // Espera pela resposta (answer) do outro peer.
     unsubscribeRoom = roomRef.onSnapshot(snapshot => {
       const data = snapshot.data();
       if (data && data.answer) {
-        // Sinaliza o peer com a resposta do outro lado, se for o iniciador.
         if (peer && peer.initiator && data.answer.type === 'answer') {
           peer.signal(data.answer);
         }
@@ -248,12 +231,10 @@
       showMessage("Erro ao carregar dados da sala.", null, true);
     });
 
-    // Listener para os ICE candidates do outro peer (callee).
     const calleeCandidates = roomRef.collection('calleeCandidates');
     unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
-          // Adiciona os ICE candidates recebidos ao peer.
           peer.signal(change.doc.data());
         }
       });
@@ -262,47 +243,40 @@
       showMessage("Erro na comunicação de rede.", null, true);
     });
 
-    // Evento de conexão bem-sucedida do WebRTC.
     peer.on('connect', () => {
       showMessage('Amigo conectado!', null, true);
-      console.log('WebRTC Peer Conectado!'); // LOG: Conexão WebRTC estabelecida
+      console.log('WebRTC Peer Conectado!');
     });
 
-    // Evento de recebimento de stream de vídeo/áudio do outro peer.
+    // Ponto crucial: Este 'stream' é o que você RECEBE do OUTRO peer (o cliente, se ele estiver transmitindo algo)
     peer.on('stream', stream => {
-      console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
-      // O remoteVideo sempre exibe o stream DO OUTRO PARTE (seja tela ou webcam)
+      console.log('Recebido stream remoto pelo host:', stream);
+      // O host deve exibir o stream do CLIENTE no seu remoteVideo
       videoPlaceholder.style.display = 'none'; // Esconde o placeholder
-      localPreviewVideo.style.display = 'none'; // Se o host está recebendo um stream, esconde a própria pré-visualização
-      remoteVideo.srcObject = stream; // Define o stream como fonte do vídeo remoto
-      console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
-      // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
+      remoteVideo.srcObject = stream;
+      console.log('remoteVideo srcObject definido no host (stream remoto):', remoteVideo.srcObject);
       if (remoteVideo.paused) {
-        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
+        remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto no host:", e));
       }
     });
 
-    // Evento de fechamento da conexão WebRTC.
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
-      console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
-      // A lógica de limpeza da sala está no hangUp, com verificação de isRoomCreator.
+      console.log('WebRTC Peer Desconectado.');
       hangUp();
     });
 
-    // Evento de erro na conexão WebRTC.
     peer.on('error', err => {
       alert('Erro na conexão: ' + err.message);
-      console.error("Erro SimplePeer:", err); // LOG: Erro no SimplePeer
-      hangUp(); // Reseta a UI e o estado
+      console.error("Erro SimplePeer:", err);
+      hangUp();
     });
 
-    // Esconde o menu e mostra a interface do aplicativo.
     menu.style.display = 'none';
     app.style.display = 'flex';
-    setupChatListener(); // Inicia o listener de chat para a nova sala
+    setupChatListener();
 
-    btnCreateRoom.textContent = 'Create New Room'; // Restaura o texto do botão
+    btnCreateRoom.textContent = 'Create New Room';
   };
 
   // Evento de clique para o botão "Entrar" na sala
@@ -337,7 +311,6 @@
 
     const roomData = roomSnapshot.data();
 
-    // Inicia a conexão WebRTC diretamente, sem aprovação do admin
     peer = new SimplePeer({ initiator: false, trickle: true });
     peer.signal(roomData.offer);
 
@@ -356,8 +329,7 @@
         if (change.type === 'added') {
           peer.signal(change.doc.data());
         }
-      }
-      );
+      });
     }, error => {
       console.error("Erro ao ouvir os candidatos do caller:", error);
       showMessage("Erro na comunicação de rede.", null, true);
@@ -365,16 +337,16 @@
 
     peer.on('connect', () => {
       showMessage('Amigo conectado!', null, true);
-      console.log('WebRTC Peer Conectado!'); // LOG: Conexão WebRTC estabelecida
+      console.log('WebRTC Peer Conectado!');
     });
 
-    // === PONTO CHAVE: RECEBIMENTO DO STREAM DO HOST PELO CLIENTE ===
+    // Ponto crucial: Este 'stream' é o que você RECEBE do OUTRO peer (o host neste caso)
     peer.on('stream', stream => {
-      console.log('Recebido stream remoto pelo cliente:', stream); // LOG: Stream remoto recebido
-      videoPlaceholder.style.display = 'none'; // Esconde o placeholder
-      localPreviewVideo.style.display = 'none'; // Garante que o vídeo de pré-visualização do host esteja escondido para o cliente
-      remoteVideo.srcObject = stream; // O CLIENTE define o stream do host como fonte do SEU vídeo principal
-      console.log('remoteVideo srcObject definido no cliente:', remoteVideo.srcObject);
+      console.log('Recebido stream remoto pelo cliente:', stream);
+      // O cliente deve exibir o stream do HOST no seu remoteVideo principal
+      videoPlaceholder.style.display = 'none';
+      remoteVideo.srcObject = stream;
+      console.log('remoteVideo srcObject definido no cliente (stream remoto):', remoteVideo.srcObject);
       if (remoteVideo.paused) {
         remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto no cliente:", e));
       }
@@ -382,14 +354,13 @@
 
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
-      console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
-      // Se não for o criador, apenas limpa o estado local
+      console.log('WebRTC Peer Desconectado.');
       hangUp();
     });
 
     peer.on('error', err => {
       alert('Erro na conexão: ' + err.message);
-      console.error("Erro SimplePeer:", err); // LOG: Erro no SimplePeer
+      console.error("Erro SimplePeer:", err);
       hangUp();
     });
 
@@ -401,12 +372,11 @@
     btnJoinRoom.textContent = 'Entrar';
   };
 
-  // Evento de clique para o botão "Compartilhar Tela"
+  // Evento de clique para o botão "Compartilhar Tela" (Esta lógica é primariamente para o HOST)
   btnStartShare.onclick = async () => {
     try {
-      // Se já houver um stream local ativo, remove-o e para as faixas antes de iniciar um novo.
       if (localStream) {
-        if (peer) peer.removeStream(localStream); // Remove do peer se ele existir
+        if (peer) peer.removeStream(localStream);
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
         console.log('Stream local existente removido.');
@@ -416,15 +386,17 @@
       localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       console.log('Stream local obtido:', localStream);
 
-      // Adiciona o stream local ao peer para ser ENVIADO aos outros.
       if (peer) {
-        peer.addStream(localStream);
+        peer.addStream(localStream); // ENVIA o stream para o outro participante
         console.log('Stream local adicionado ao peer para transmissão.');
         
-        // Exibe o stream local no player de pré-visualização PARA O HOST
+        // O HOST exibe sua PRÓPRIA tela no localPreviewVideo
         localPreviewVideo.srcObject = localStream;
         localPreviewVideo.style.display = 'block'; // Mostra a pré-visualização do host
-        videoPlaceholder.style.display = 'none'; // Esconde o placeholder
+        videoPlaceholder.style.display = 'none'; // Esconde o placeholder principal
+        // Importante: remoteVideo NÃO é alterado aqui, pois ele é para o stream remoto.
+        // Se o host já estava recebendo um stream do cliente, ele continuará a exibi-lo no remoteVideo.
+        // Se o host não estava recebendo nada, remoteVideo permanecerá vazio até que o cliente envie algo.
       } else {
         console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.');
         localStream.getTracks().forEach(track => track.stop());
@@ -440,10 +412,9 @@
         btnStartShare.disabled = false;
         btnStartShare.textContent = 'Compartilhar Tela';
         if (localStream) {
-          if (peer) peer.removeStream(localStream); // Remove o stream do peer
+          if (peer) peer.removeStream(localStream);
           localStream.getTracks().forEach(track => track.stop());
           localStream = null;
-          // Quando o compartilhamento local termina, o player de pré-visualização deve ser limpo
           localPreviewVideo.srcObject = null;
           localPreviewVideo.style.display = 'none';
           videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
@@ -467,17 +438,17 @@
   // Evento de clique para o botão "Enviar" do chat
   sendChatBtn.onclick = async () => {
     const text = chatInput.value.trim();
-    if (!text || !currentRoomId) return; // Não envia mensagem vazia ou se não estiver em uma sala
+    if (!text || !currentRoomId) return;
 
-    showMessage(text, 'Você'); // Exibe a própria mensagem no chat local
-    chatInput.value = ''; // Limpa o campo de input
+    showMessage(text, 'Você');
+    chatInput.value = '';
 
     try {
       const chatRef = db.collection('movie-rooms').doc(currentRoomId).collection('chat');
       await chatRef.add({
         text,
         senderId: userId,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp() // Adiciona timestamp do servidor
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
       });
     } catch (e) {
       showMessage('Falha ao enviar a mensagem.', null, true);
@@ -487,18 +458,16 @@
 
   // Evento de teclado para enviar mensagem do chat com Enter
   chatInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { // Envia com Enter, mas permite Shift+Enter para quebra de linha
-      e.preventDefault(); // Previne a quebra de linha padrão do Enter
-      sendChatBtn.click(); // Simula o clique no botão de enviar
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatBtn.click();
     }
   });
 
   /**
    * Configura o listener em tempo real para as mensagens do chat no Firestore.
-   * As mensagens são exibidas no chatMessages.
    */
   function setupChatListener() {
-    // Garante que listeners anteriores sejam desinscritos antes de criar novos
     if (unsubscribeChat) unsubscribeChat();
 
     const chatRef = db.collection('movie-rooms').doc(currentRoomId).collection('chat').orderBy('timestamp');
@@ -506,7 +475,6 @@
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
           const data = change.doc.data();
-          // Exibe a mensagem apenas se o remetente não for o usuário atual
           if (data.senderId !== userId) {
             showMessage(data.text, 'Amigo');
           }
@@ -520,7 +488,7 @@
 
   // Evento de clique para o botão "Sair da Sala"
   btnLeaveRoom.onclick = () => {
-    hangUp(true); // Passa 'true' para indicar que o usuário está saindo explicitamente
+    hangUp(true); // Indica que a saída foi iniciada pelo usuário
   };
 
   /**
@@ -528,17 +496,14 @@
    * @param {boolean} userInitiated - Verdadeiro se a função foi chamada por uma ação explícita do usuário (ex: botão Sair).
    */
   async function hangUp(userInitiated = false) {
-    // Destroi o objeto SimplePeer
     if (peer) {
       peer.destroy();
       peer = null;
     }
-    // Para as faixas do stream de mídia local (se houver)
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       localStream = null;
     }
-    // Desinscreve todos os listeners do Firestore para evitar vazamentos de memória
     if (unsubscribeRoom) {
       unsubscribeRoom();
       unsubscribeRoom = null;
@@ -552,14 +517,10 @@
       unsubscribeCandidates = null;
     }
 
-    // Lógica para apagar a sala APENAS SE FOR O CRIADOR E ESTIVER SAINDO
-    // E a saída for iniciada pelo usuário (clique no botão 'Sair da Sala')
+    // Lógica para apagar a sala APENAS SE FOR O CRIADOR E A SAÍDA FOR INICIADA PELO USUÁRIO.
     if (isRoomCreator && currentRoomId && userInitiated) {
       try {
         const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-        // Apaga o documento principal da sala.
-        // Para apagar subcoleções (chat, candidatos) automaticamente, seria necessário
-        // uma Cloud Function no Firebase ou iterar e apagar manualmente (mais complexo no cliente).
         await roomRef.delete();
         console.log(`Sala ${currentRoomId} apagada pelo criador.`);
       } catch (error) {
@@ -567,37 +528,32 @@
       }
     }
 
-    // Reseta variáveis de estado
     currentRoomId = null;
-    remoteVideo.srcObject = null; // Limpa o vídeo remoto
-    localPreviewVideo.srcObject = null; // Limpa a pré-visualização local
-    chatMessages.innerHTML = ''; // Limpa as mensagens do chat
-    chatInput.value = ''; // Limpa o input do chat
-    roomInput.value = ''; // Limpa o input do código da sala
-    isRoomCreator = false; // Reseta a flag do criador da sala
+    remoteVideo.srcObject = null;
+    localPreviewVideo.srcObject = null;
+    chatMessages.innerHTML = '';
+    chatInput.value = '';
+    roomInput.value = '';
+    isRoomCreator = false;
 
-    // Alterna a visibilidade da UI (mostra o menu, esconde o app)
     menu.style.display = 'block';
     app.style.display = 'none';
 
-    // Reseta o estado dos botões e placeholders
     btnCreateRoom.disabled = false;
     btnCreateRoom.textContent = 'Create New Room';
     btnJoinRoom.disabled = false;
     btnJoinRoom.textContent = 'Entrar';
     btnStartShare.disabled = false;
     btnStartShare.textContent = 'Compartilhar Tela';
-    videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
-    localPreviewVideo.style.display = 'none'; // Garante que a pré-visualização local esteja escondida
+    videoPlaceholder.style.display = 'block';
+    localPreviewVideo.style.display = 'none';
   }
 
   // Adiciona um listener para o evento beforeunload para o caso de atualizar a página ou fechar a aba
   window.addEventListener('beforeunload', () => {
-    // Se for o criador da sala e ele está saindo/atualizando, tenta limpar a sala.
-    // É importante notar que operações assíncronas no beforeunload podem não ser concluídas.
-    // Uma Cloud Function é a forma mais robusta de garantir a limpeza de salas abandonadas.
+    // Se for o criador da sala e ele está saindo/atualizando a página
+    // A limpeza da sala aqui é uma tentativa, pois operações assíncronas no beforeunload não são garantidas.
     if (isRoomCreator && currentRoomId) {
-      // Tentativa de apagar a sala. Não há garantia de sucesso.
       db.collection('movie-rooms').doc(currentRoomId).delete()
         .then(() => console.log("Sala tentando ser apagada ao descarregar a página (criador)."))
         .catch(e => console.error("Erro ao tentar apagar sala ao descarregar (criador):", e));
@@ -605,27 +561,11 @@
   });
 
 
-  // Inicialização da aplicação quando a janela é carregada.
-  auth.onAuthStateChanged(user => {
-    if (user) {
-      userId = user.uid;
-      authStatus.textContent = 'Conectado com sucesso!';
-      btnCreateRoom.disabled = false;
-      btnJoinRoom.disabled = false;
-      console.log("Usuário autenticado com ID:", userId);
-    } else {
-      userId = null;
-      authStatus.textContent = 'Autenticando...';
-      btnCreateRoom.disabled = true;
-      btnJoinRoom.disabled = true;
-      if (!auth.currentUser) {
-        auth.signInAnonymously().catch(err => {
-          authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
-          console.error("Erro na autenticação anônima:", err);
-        });
-      }
-    }
-  });
+  // Inicialização da aplicação
+  window.onload = () => {
+    btnCreateRoom.disabled = true;
+    btnJoinRoom.disabled = true;
+  };
 </script>
 
 </body>
