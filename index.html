@@ -61,6 +61,8 @@
       <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded">Sair da Sala</button>
     </div>
 
+    <video id="localPreviewVideo" autoplay playsinline muted class="w-full h-40 bg-gray-900 rounded mb-2 hidden"></video>
+
     <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded mb-4"></video>
 
     <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
@@ -112,12 +114,13 @@
   const app = document.getElementById('app');
   const roomCodeDisplay = document.getElementById('roomCodeDisplay');
   const btnLeaveRoom = document.getElementById('btnLeaveRoom');
+  const localPreviewVideo = document.getElementById('localPreviewVideo'); // NOVO: elemento de vídeo para pré-visualização local
   const remoteVideo = document.getElementById('remoteVideo');
   const videoPlaceholder = document.getElementById('videoPlaceholder');
   const btnStartShare = document.getElementById('btnStartShare');
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput');
-  const sendChatBtn = document = document.getElementById('sendChatBtn');
+  const sendChatBtn = document.getElementById('sendChatBtn'); // Corrigido aqui, estava `document = document.getElementById`
 
   // Variáveis de estado
   let userId = null;
@@ -214,7 +217,6 @@
     const callerCandidates = roomRef.collection('callerCandidates');
 
     // Inicializa o SimplePeer como iniciador.
-    // O stream local é adicionado apenas quando o usuário clica em "Compartilhar Tela".
     peer = new SimplePeer({ initiator: true, trickle: true });
 
     // Listener para sinais do SimplePeer.
@@ -270,6 +272,7 @@
     peer.on('stream', stream => {
       console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
       videoPlaceholder.style.display = 'none'; // Esconde o placeholder
+      localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização local se o stream do amigo chegar
       remoteVideo.srcObject = stream; // Define o stream como fonte do vídeo remoto
       console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
       // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
@@ -282,7 +285,10 @@
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
       console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
-      hangUp(); // Reseta a UI e o estado
+      // Se for o criador, ele decide se vai apagar a sala ao sair.
+      // Se não for o criador, a sala deve permanecer.
+      // A lógica de limpeza da sala foi movida para o hangUp, com verificação de isRoomCreator.
+      hangUp();
     });
 
     // Evento de erro na conexão WebRTC.
@@ -366,6 +372,7 @@
     peer.on('stream', stream => {
       console.log('Recebido stream remoto:', stream); // LOG: Stream remoto recebido
       videoPlaceholder.style.display = 'none';
+      localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização local
       remoteVideo.srcObject = stream;
       console.log('remoteVideo srcObject definido:', remoteVideo.srcObject); // LOG: srcObject do vídeo remoto definido
       // Tenta reproduzir o vídeo, caso esteja pausado ou com problemas de autoplay
@@ -377,6 +384,7 @@
     peer.on('close', () => {
       showMessage('Amigo desconectado.', null, true);
       console.log('WebRTC Peer Desconectado.'); // LOG: Peer desconectado
+      // Se não for o criador, apenas limpa o estado local
       hangUp();
     });
 
@@ -413,8 +421,10 @@
       if (peer) {
         peer.addStream(localStream);
         console.log('Stream local adicionado ao peer.'); // LOG: Stream local adicionado
-        // A linha abaixo foi removida para que o host não veja sua própria tela no player de vídeo remoto.
-        // remoteVideo.srcObject = localStream; 
+        
+        // NOVO: Exibe o stream local no player de pré-visualização para o host
+        localPreviewVideo.srcObject = localStream;
+        localPreviewVideo.style.display = 'block'; // Mostra a pré-visualização
         videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       } else {
         console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.'); // LOG: Peer não inicializado
@@ -436,8 +446,9 @@
           localStream.getTracks().forEach(track => track.stop());
           localStream = null;
           // Quando o compartilhamento local termina, o player principal deve voltar a mostrar o placeholder
-          remoteVideo.srcObject = null; // Limpa o vídeo
-          videoPlaceholder.style.display = 'block'; // Mostra o placeholder
+          localPreviewVideo.srcObject = null; // Limpa o vídeo de pré-visualização
+          localPreviewVideo.style.display = 'none'; // Esconde a pré-visualização
+          videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
         }
       };
 
@@ -512,13 +523,14 @@
 
   // Evento de clique para o botão "Sair da Sala"
   btnLeaveRoom.onclick = () => {
-    hangUp(); // Chama a função para limpar e resetar tudo
+    hangUp(true); // Passa 'true' para indicar que o usuário está saindo explicitamente
   };
 
   /**
    * Função para encerrar a conexão WebRTC, parar streams e resetar o estado da UI e variáveis.
+   * @param {boolean} userInitiated - Verdadeiro se a função foi chamada por uma ação explícita do usuário (ex: botão Sair).
    */
-  function hangUp() {
+  async function hangUp(userInitiated = false) {
     // Destroi o objeto SimplePeer
     if (peer) {
       peer.destroy();
@@ -543,10 +555,27 @@
       unsubscribeCandidates = null;
     }
 
+    // Lógica para apagar a sala APENAS SE FOR O CRIADOR E ESTIVER SAINDO
+    if (isRoomCreator && currentRoomId && userInitiated) {
+      try {
+        const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+        // Apaga a sala e suas subcoleções (chat, candidatos)
+        // Nota: Apagar subcoleções no Firestore requer mais lógica ou uma Cloud Function.
+        // Para simplificar, vou apenas apagar o documento principal da sala.
+        // Se precisar apagar subcoleções, você terá que iterar sobre elas ou usar uma função de cloud.
+        await roomRef.delete();
+        console.log(`Sala ${currentRoomId} apagada pelo criador.`);
+      } catch (error) {
+        console.error("Erro ao apagar a sala:", error);
+      }
+    }
+
     // Reseta variáveis de estado
     currentRoomId = null;
     remoteVideo.srcObject = null; // Limpa o vídeo remoto
+    localPreviewVideo.srcObject = null; // Limpa a pré-visualização local
     chatMessages.innerHTML = ''; // Limpa as mensagens do chat
+    chatInput.value = ''; // Limpa o input do chat
     roomInput.value = ''; // Limpa o input do código da sala
     isRoomCreator = false; // Reseta a flag do criador da sala
 
@@ -562,7 +591,24 @@
     btnStartShare.disabled = false;
     btnStartShare.textContent = 'Compartilhar Tela';
     videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
+    localPreviewVideo.style.display = 'none'; // Garante que a pré-visualização local esteja escondida
   }
+
+  // Adiciona um listener para o evento beforeunload para o caso de atualizar a página ou fechar a aba
+  window.addEventListener('beforeunload', () => {
+    // Se for o criador da sala e ele está saindo/atualizando, tenta limpar a sala.
+    // userInitiated = false, pois não é um clique explícito no botão "Sair".
+    // A chamada assíncrona aqui pode não ter tempo de completar antes da página descarregar,
+    // mas é a melhor tentativa via cliente. Uma Cloud Function seria mais robusta.
+    if (isRoomCreator && currentRoomId) {
+      // Usar navigator.sendBeacon ou manter a sala para um mecanismo de limpeza externo seria mais confiável.
+      // Para este cenário, faremos uma tentativa de apagar ao descarregar a página.
+      db.collection('movie-rooms').doc(currentRoomId).delete()
+        .then(() => console.log("Sala apagada ao descarregar a página (criador)."))
+        .catch(e => console.error("Erro ao apagar sala ao descarregar (criador):", e));
+    }
+  });
+
 
   // Inicialização da aplicação quando a janela é carregada.
   // A autenticação inicial é tratada pelo auth.onAuthStateChanged.
