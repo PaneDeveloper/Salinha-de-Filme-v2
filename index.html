@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Movie Room with Chat</title>
 
-<!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
-<!-- Simple-Peer WebRTC -->
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
 
 <style>
@@ -63,8 +61,6 @@
       <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded">Sair da Sala</button>
     </div>
 
-    <!-- Adicionado o atributo 'muted' para garantir a reprodução automática em todos os navegadores -->
-    <!-- Adicionado 'controls' para depuração e controle manual se necessário -->
     <video id="remoteVideo" autoplay playsinline muted controls class="w-full h-64 bg-black rounded mb-4"></video>
 
     <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
@@ -82,7 +78,6 @@
 
 </div>
 
-<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
@@ -418,8 +413,8 @@
       if (peer) {
         peer.addStream(localStream);
         console.log('Stream local adicionado ao peer.'); // LOG: Stream local adicionado
-        // NOVO: Exibe o stream local no player principal para o host
-        remoteVideo.srcObject = localStream;
+        // A linha abaixo foi removida para que o host não veja sua própria tela no player de vídeo remoto.
+        // remoteVideo.srcObject = localStream; 
         videoPlaceholder.style.display = 'none'; // Esconde o placeholder
       } else {
         console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.'); // LOG: Peer não inicializado
