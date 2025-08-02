@@ -312,12 +312,10 @@
                 btnJoinRoom.textContent = 'Entrar';
                 return;
             }
-            
-            // --- INÍCIO DA CORREÇÃO DE TRANSMISSÃO ---
-            // 1. Cria o peer imediatamente
+
+            // --- INÍCIO DA CORREÇÃO DE SINCRONIZAÇÃO (GUEST) ---
             peer = new SimplePeer({ initiator: false, trickle: true });
 
-            // 2. Configura todos os ouvintes do peer para que ele esteja pronto
             peer.on('signal', async data => {
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
                 if (data.type === 'answer') {
@@ -331,7 +329,7 @@
             peer.on('stream', stream => {
                 videoPlaceholder.style.display = 'none';
                 remoteVideo.srcObject = stream;
-                remoteVideo.muted = false; // Áudio ativado para o cliente
+                remoteVideo.muted = false;
                 remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
             });
 
@@ -348,8 +346,7 @@
                 showModal('Erro na conexão: ' + err.message);
                 hangUp();
             });
-
-            // 3. Agora, ouve as coleções do Firestore para processar os sinais do host
+            
             const callerCandidates = roomRef.collection('callerCandidates');
             unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
                 snapshot.docChanges().forEach(change => {
@@ -361,13 +358,19 @@
                 });
             });
 
+            // Ouve a oferta do host, e se o peer ainda não tiver uma descrição remota, sinaliza a oferta.
+            // O ouvinte se auto-desativa depois de receber e processar a oferta.
             unsubscribeRoom = roomRef.onSnapshot(async snapshot => {
                 const roomData = snapshot.data();
-                if (roomData && roomData.offer && peer && !peer.connected) { 
+                if (roomData && roomData.offer && peer && !peer.remoteDescription) {
                     peer.signal(roomData.offer);
+                    if (unsubscribeRoom) {
+                        unsubscribeRoom();
+                        unsubscribeRoom = null;
+                    }
                 }
             });
-            // --- FIM DA CORREÇÃO DE TRANSMISSÃO ---
+            // --- FIM DA CORREÇÃO DE SINCRONIZAÇÃO (GUEST) ---
 
             menu.style.display = 'none';
             app.style.display = 'flex';
@@ -398,27 +401,31 @@
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
                 const callerCandidates = roomRef.collection('callerCandidates');
 
+                // --- INÍCIO DA CORREÇÃO DE SINCRONIZAÇÃO (HOST) ---
                 peer.on('signal', async data => {
                     if (data.type === 'offer') {
+                        // Salva a oferta no Firestore
                         await roomRef.set({
                             offer: data,
                             creatorId: userId,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         }, { merge: true });
+
+                        // AGORA, e SOMENTE AGORA, começa a ouvir a resposta do convidado
+                        unsubscribeRoom = roomRef.onSnapshot(snapshot => {
+                            const data = snapshot.data();
+                            if (data && data.answer) {
+                                if (peer && data.answer.type === 'answer') {
+                                    peer.signal(data.answer);
+                                }
+                            }
+                        });
                     } else if (data.candidate) {
                         await callerCandidates.add(data);
                     }
                 });
+                // --- FIM DA CORREÇÃO DE SINCRONIZAÇÃO (HOST) ---
 
-                unsubscribeRoom = roomRef.onSnapshot(snapshot => {
-                    const data = snapshot.data();
-                    if (data && data.answer) {
-                        if (peer && data.answer.type === 'answer') {
-                            peer.signal(data.answer);
-                        }
-                    }
-                });
-                
                 const calleeCandidates = roomRef.collection('calleeCandidates');
                 unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
                     snapshot.docChanges().forEach(change => {
@@ -435,7 +442,6 @@
                 });
                 
                 peer.on('stream', stream => {
-                    // O host já exibe o próprio stream, então este é ignorado.
                     console.log('Stream remoto recebido pelo host, ignorando.');
                 });
                 
