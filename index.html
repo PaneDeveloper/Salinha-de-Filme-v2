@@ -56,6 +56,7 @@
 
     <div id="container" class="max-w-xl w-full p-6 bg-gray-900 rounded-xl shadow-lg flex flex-col">
 
+        <!-- UI do Menu -->
         <div id="menu" class="flex flex-col items-center">
             <h1 class="text-3xl font-bold mb-2">Movie Room</h1>
             <p class="mb-6 text-gray-400">Crie uma sala para assistir com amigos</p>
@@ -70,19 +71,23 @@
             <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
         </div>
 
+        <!-- UI da Aplicação -->
         <div id="app" class="hidden flex-col">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
                 <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition">Sair da Sala</button>
             </div>
 
+            <!-- Vídeo principal que exibe o stream local (host) ou remoto (cliente) -->
             <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded mb-4"></video>
 
+            <!-- Placeholder enquanto espera o stream -->
             <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
                 <p>Esperando o host compartilhar a tela...</p>
                 <button id="btnStartShare" class="mt-3 btn-primary">Compartilhar Tela</button>
             </div>
 
+            <!-- Área de chat -->
             <div id="chatMessages" class="mb-3"></div>
 
             <div class="flex gap-2">
@@ -92,6 +97,7 @@
         </div>
     </div>
 
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
@@ -306,12 +312,12 @@
                 btnJoinRoom.textContent = 'Entrar';
                 return;
             }
-
+            
             // --- INÍCIO DA CORREÇÃO DE TRANSMISSÃO ---
-            // Cria o peer imediatamente ao entrar na sala
+            // 1. Cria o peer imediatamente
             peer = new SimplePeer({ initiator: false, trickle: true });
 
-            // Configura todos os ouvintes do peer aqui, logo após sua criação
+            // 2. Configura todos os ouvintes do peer para que ele esteja pronto
             peer.on('signal', async data => {
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
                 if (data.type === 'answer') {
@@ -342,17 +348,8 @@
                 showModal('Erro na conexão: ' + err.message);
                 hangUp();
             });
-            // --- FIM DA CORREÇÃO DE TRANSMISSÃO ---
 
-            // Agora, ouve a oferta do host e sinaliza o peer quando ela chegar
-            unsubscribeRoom = roomRef.onSnapshot(async snapshot => {
-                const roomData = snapshot.data();
-                if (roomData && roomData.offer && !peer.connected) { 
-                    peer.signal(roomData.offer);
-                }
-            });
-
-            // Ouve os candidatos ICE do host
+            // 3. Agora, ouve as coleções do Firestore para processar os sinais do host
             const callerCandidates = roomRef.collection('callerCandidates');
             unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
                 snapshot.docChanges().forEach(change => {
@@ -363,6 +360,14 @@
                     }
                 });
             });
+
+            unsubscribeRoom = roomRef.onSnapshot(async snapshot => {
+                const roomData = snapshot.data();
+                if (roomData && roomData.offer && peer && !peer.connected) { 
+                    peer.signal(roomData.offer);
+                }
+            });
+            // --- FIM DA CORREÇÃO DE TRANSMISSÃO ---
 
             menu.style.display = 'none';
             app.style.display = 'flex';
