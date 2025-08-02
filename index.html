@@ -275,66 +275,15 @@
             isRoomCreator = true;
 
             const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-            const callerCandidates = roomRef.collection('callerCandidates');
-            
-            peer = new SimplePeer({ initiator: true, trickle: true });
-
-            peer.on('signal', async data => {
-                if (data.type === 'offer') {
-                    await roomRef.set({
-                        offer: data,
-                        creatorId: userId,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                } else if (data.candidate) {
-                    await callerCandidates.add(data);
-                }
-            });
-
-            unsubscribeRoom = roomRef.onSnapshot(snapshot => {
-                const data = snapshot.data();
-                if (data && data.answer) {
-                    if (peer && peer.initiator && data.answer.type === 'answer') {
-                        peer.signal(data.answer);
-                    }
-                }
-            });
-
-            const calleeCandidates = roomRef.collection('calleeCandidates');
-            unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        if (peer) {
-                            peer.signal(change.doc.data());
-                        }
-                    }
-                });
-            });
-            
-            peer.on('connect', () => {
-                showMessage('Amigo conectado!', null, true);
-            });
-            
-            // O host recebe o stream remoto do cliente (caso o cliente compartilhe algo)
-            peer.on('stream', stream => {
-                remoteVideo.srcObject = stream;
-                remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
-            });
-            
-            peer.on('close', () => {
-                showMessage('Amigo desconectado.', null, true);
-                hangUp();
-            });
-
-            peer.on('error', err => {
-                showModal('Erro na conexão: ' + err.message);
-                hangUp();
-            });
+            await roomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
             menu.style.display = 'none';
             app.style.display = 'flex';
             setupChatListener();
+            
+            // O host ainda não tem um peer, aguarda o clique em "Compartilhar Tela"
             btnCreateRoom.textContent = 'Create New Room';
+            btnCreateRoom.disabled = false;
         };
 
         btnJoinRoom.onclick = async () => {
@@ -358,57 +307,61 @@
             const roomRef = db.collection('movie-rooms').doc(currentRoomId);
             const roomSnapshot = await roomRef.get();
 
-            if (!roomSnapshot.exists || !roomSnapshot.data().offer) {
-                showModal(`A sala "${currentRoomId}" não foi encontrada ou não está pronta.`);
+            if (!roomSnapshot.exists) {
+                showModal(`A sala "${currentRoomId}" não foi encontrada.`);
                 btnJoinRoom.disabled = false;
                 btnJoinRoom.textContent = 'Entrar';
                 return;
             }
 
-            const roomData = roomSnapshot.data();
-
-            peer = new SimplePeer({ initiator: false, trickle: true });
-            peer.signal(roomData.offer);
-
-            peer.on('signal', async data => {
-                if (data.type === 'answer') {
-                    await roomRef.update({ answer: data });
-                } else if (data.candidate) {
-                    const calleeCandidates = roomRef.collection('calleeCandidates');
-                    await calleeCandidates.add(data);
-                }
-            });
-            
-            const callerCandidates = roomRef.collection('callerCandidates');
-            unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        if (peer) {
-                            peer.signal(change.doc.data());
+            unsubscribeRoom = roomRef.onSnapshot(async snapshot => {
+                const roomData = snapshot.data();
+                if (roomData && roomData.offer && !peer) {
+                    peer = new SimplePeer({ initiator: false, trickle: true });
+                    
+                    peer.on('signal', async data => {
+                        if (data.type === 'answer') {
+                            await roomRef.update({ answer: data });
+                        } else if (data.candidate) {
+                            const calleeCandidates = roomRef.collection('calleeCandidates');
+                            await calleeCandidates.add(data);
                         }
-                    }
-                });
-            });
+                    });
 
-            peer.on('connect', () => {
-                showMessage('Amigo conectado!', null, true);
-            });
-            
-            // O cliente recebe o stream remoto do host
-            peer.on('stream', stream => {
-                videoPlaceholder.style.display = 'none';
-                remoteVideo.srcObject = stream;
-                remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
-            });
-            
-            peer.on('close', () => {
-                showMessage('Amigo desconectado.', null, true);
-                hangUp();
-            });
+                    const callerCandidates = roomRef.collection('callerCandidates');
+                    unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
+                        snapshot.docChanges().forEach(change => {
+                            if (change.type === 'added') {
+                                if (peer) {
+                                    peer.signal(change.doc.data());
+                                }
+                            }
+                        });
+                    });
+                    
+                    peer.on('connect', () => {
+                        showMessage('Amigo conectado!', null, true);
+                    });
+                    
+                    peer.on('stream', stream => {
+                        videoPlaceholder.style.display = 'none';
+                        remoteVideo.srcObject = stream;
+                        remoteVideo.muted = false; // Áudio ativado para o cliente
+                        remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
+                    });
+                    
+                    peer.on('close', () => {
+                        showMessage('Amigo desconectado.', null, true);
+                        hangUp();
+                    });
 
-            peer.on('error', err => {
-                showModal('Erro na conexão: ' + err.message);
-                hangUp();
+                    peer.on('error', err => {
+                        showModal('Erro na conexão: ' + err.message);
+                        hangUp();
+                    });
+
+                    peer.signal(roomData.offer);
+                }
             });
 
             menu.style.display = 'none';
@@ -419,28 +372,82 @@
         };
 
         btnStartShare.onclick = async () => {
-            if (!peer) {
-                showModal('Por favor, crie ou entre em uma sala antes de compartilhar a tela.');
+            if (!currentRoomId) {
+                showModal('Por favor, crie uma sala antes de compartilhar a tela.');
+                return;
+            }
+            if (isRoomCreator && peer) {
+                showModal('Você já está compartilhando a tela.');
                 return;
             }
 
             try {
-                if (localStream) {
-                    // Remove o stream anterior caso exista
-                    peer.removeStream(localStream);
-                    localStream.getTracks().forEach(track => track.stop());
-                }
-
                 // Solicita o compartilhamento da tela e áudio do sistema
                 localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-                // Host exibe o próprio stream no player principal
+                // O host exibe o próprio stream no player principal
                 remoteVideo.srcObject = localStream;
                 remoteVideo.muted = false; // Garante que o áudio local não esteja mudo
                 videoPlaceholder.style.display = 'none';
 
-                // Adiciona o stream ao peer para que o outro usuário possa vê-lo
-                peer.addStream(localStream);
+                // Agora cria o peer como iniciador, já com o stream
+                peer = new SimplePeer({ initiator: true, trickle: true, stream: localStream });
+
+                const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+                const callerCandidates = roomRef.collection('callerCandidates');
+
+                peer.on('signal', async data => {
+                    if (data.type === 'offer') {
+                        await roomRef.set({
+                            offer: data,
+                            creatorId: userId,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    } else if (data.candidate) {
+                        await callerCandidates.add(data);
+                    }
+                });
+
+                // O host ouve a resposta do outro peer
+                unsubscribeRoom = roomRef.onSnapshot(snapshot => {
+                    const data = snapshot.data();
+                    if (data && data.answer) {
+                        if (peer && data.answer.type === 'answer') {
+                            peer.signal(data.answer);
+                        }
+                    }
+                });
+                
+                // O host ouve os candidatos ICE do outro peer
+                const calleeCandidates = roomRef.collection('calleeCandidates');
+                unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            if (peer) {
+                                peer.signal(change.doc.data());
+                            }
+                        }
+                    });
+                });
+
+                peer.on('connect', () => {
+                    showMessage('Amigo conectado!', null, true);
+                });
+                
+                peer.on('stream', stream => {
+                    // Se o host receber um stream, ignora porque o foco é o seu próprio stream
+                    console.log('Stream remoto recebido pelo host, ignorando.');
+                });
+                
+                peer.on('close', () => {
+                    showMessage('Amigo desconectado.', null, true);
+                    hangUp();
+                });
+
+                peer.on('error', err => {
+                    showModal('Erro na conexão: ' + err.message);
+                    hangUp();
+                });
                 
                 localStream.getVideoTracks()[0].onended = () => {
                     showMessage('Compartilhamento de tela encerrado.', null, true);
