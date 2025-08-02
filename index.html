@@ -73,7 +73,7 @@
     <div id="chatMessages" class="mb-3"></div>
 
     <div class="flex gap-2">
-      <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-2 rounded bg-gray-700 text-white" />
+      <input id="chatInput" placeholder="Sua mensagem Aqui =D" class="flex-grow p-2 rounded bg-gray-700 text-white" />
       <button id="sendChatBtn" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold">Enviar</button>
     </div>
   </div>
@@ -103,6 +103,10 @@
   const appFirebase = firebase.initializeApp(firebaseConfig);
   const auth = appFirebase.auth();
   const db = appFirebase.firestore();
+  
+  // Pequena alteração para garantir que o arquivo seja atualizado.
+  console.log("Arquivo de código atualizado.");
+
 
   // Elementos DOM
   const btnCreateRoom = document.getElementById('btnCreateRoom');
@@ -409,9 +413,9 @@
           }
         });
       }, error => {
-        console.error("Erro ao ouvir os candidatos do caller:", error);
-        showModal("Erro na comunicação de rede.");
-      });
+      console.error("Erro ao ouvir os candidatos do caller:", error);
+      showModal("Erro na comunicação de rede.");
+    });
 
       peer.on('connect', () => {
         showMessage('Amigo conectado!', null, true);
