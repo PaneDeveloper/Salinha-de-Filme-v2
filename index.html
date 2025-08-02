@@ -61,10 +61,8 @@
       <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded">Sair</button>
     </div>
 
-    <!-- O localPreviewVideo agora é usado apenas para um preview secundário, não mais para o principal do host -->
     <video id="localPreviewVideo" autoplay playsinline muted class="w-full h-40 bg-gray-900 rounded mb-2 hidden"></video>
 
-    <!-- O remoteVideo agora serve como o player principal tanto para o stream remoto quanto para o stream local do host -->
     <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded mb-4"></video>
 
     <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
@@ -88,13 +86,16 @@
 
 <script>
   // === CONFIGURAÇÃO FIREBASE ===
+  //
+  // SUBSTITUA ESTE BLOCO COM A SUA firebaseConfig!
+  //
   const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "AIzaSyA3HIqR4rT3NANEulauFy_-3OkuWOqYhqk",
-    authDomain: "salinha-de-filme.firebaseapp.com",
-    projectId: "salinha-de-filme",
-    storageBucket: "salinha-de-filme.firebasestorage.app",
-    messagingSenderId: "589071044223",
-    appId: "1:589071044223:web:2e8c6e0b4644bc99fbf94a"
+    apiKey: "AIzaSyADv0rYIOrPpysbl5i4UkddDK1EKyGY06c",
+    authDomain: "salinha-de-filme-v2.firebaseapp.com",
+    projectId: "alinha-de-filme-v2",
+    storageBucket: "salinha-de-filme-v2.firebasestorage.app",
+    messagingSenderId: "356504534538",
+    appId: "1:356504534538:web:7c5864a0fc2a93a24229f3"
   };
   const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
   const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -272,7 +273,8 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         } catch (e) {
-          console.error("Erro ao salvar a oferta da sala:", e);
+          // Adiciona um log de erro mais específico do Firestore
+          console.error("ERRO FIREBASE: Falha ao salvar a oferta da sala. Verifique suas regras de segurança.", e);
           showModal("Erro ao criar a sala. Tente novamente.");
           hangUp();
         }
@@ -451,31 +453,31 @@
     }
   };
 
-  // Evento de clique para o botão "Compartilhar Tela" (Esta lógica é primariamente para o HOST)
+  // Evento de clique para o botão "Compartilhar Tela"
   btnStartShare.onclick = async () => {
     try {
       if (localStream) {
-        // Se já houver um stream local, encerre-o antes de iniciar um novo.
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
         console.log('Stream local existente removido.');
       }
 
-      localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      console.log('Stream local obtido:', localStream);
+      // === AQUI ESTÁ A FUNCIONALIDADE QUE VOCÊ QUER ===
+      // Usando getDisplayMedia para compartilhar a tela e o áudio.
+      localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+      
+      console.log('Stream local (tela) obtido:', localStream);
 
       if (peer) {
-        // Corrigido: O host agora exibe o seu próprio stream no player principal (`remoteVideo`),
-        // como se fosse um stream remoto que ele está assistindo. Isso atende ao pedido de
-        // ter os controles do player principal.
-        remoteVideo.srcObject = localStream;
+        localPreviewVideo.srcObject = localStream;
+        localPreviewVideo.style.display = 'block';
         videoPlaceholder.style.display = 'none';
-        localPreviewVideo.style.display = 'none'; // Garante que o preview antigo está escondido
 
-        // Adiciona o novo stream ao peer, o que acionará o evento 'negotiate'
-        // e enviará uma nova oferta para o cliente.
         peer.addStream(localStream);
-        console.log('Stream local adicionado ao peer para transmissão.');
+        console.log('Stream local (tela) adicionado ao peer para transmissão.');
 
       } else {
         console.warn('Peer não inicializado. Não foi possível adicionar o stream de tela.');
@@ -492,7 +494,6 @@
         btnStartShare.textContent = 'Compartilhar Tela';
 
         if (peer && localStream) {
-          // Remova o stream do peer para acionar a re-negociação novamente.
           peer.removeStream(localStream);
         }
 
@@ -503,17 +504,16 @@
 
         remoteVideo.srcObject = null;
         videoPlaceholder.style.display = 'block'; // Mostra o placeholder de vídeo novamente
+        localPreviewVideo.style.display = 'none';
       };
 
       btnStartShare.disabled = true;
       btnStartShare.textContent = 'Compartilhando...';
 
     } catch (err) {
-      console.error("Erro ao compartilhar tela:", err);
-      if (err.name === 'NotReadableError') {
-        showModal('Não foi possível iniciar o compartilhamento de tela. Por favor, certifique-se de que você concedeu permissão ao navegador para gravar a tela no pop-up de seleção.');
-      } else if (err.name === 'NotAllowedError') {
-        showModal('Permissão para compartilhar a tela negada. Por favor, verifique as configurações de privacidade do seu navegador e sistema operacional para permitir a gravação de tela.');
+      console.error("Erro ao compartilhar a tela:", err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        showModal('Permissão para compartilhar a tela negada. Por favor, verifique as configurações de privacidade do seu navegador ou execute em um ambiente com permissão.');
       } else {
         showModal('Ocorreu um erro inesperado ao tentar compartilhar a tela: ' + err.message);
       }
@@ -556,8 +556,7 @@
   function setupChatListener() {
     if (unsubscribeChat) unsubscribeChat();
 
-    // Removendo o orderBy('timestamp') para evitar problemas de índice
-    const chatRef = getRoomRef(currentRoomId).collection('chat');
+    const chatRef = getRoomRef(currentRoomId).collection('chat').orderBy('timestamp');
     unsubscribeChat = chatRef.onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
