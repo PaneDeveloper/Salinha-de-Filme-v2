@@ -1,11 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sala de Filme :3</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+<script>
+  // Carrega as configurações do Tailwind CSS para usar a fonte Inter.
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
 
 <style>
   body {
@@ -39,77 +51,98 @@
 </head>
 <body>
 
-<div id="container" style="max-width: 480px; width: 100%;">
+<div id="container" class="max-w-md w-full p-4 bg-gray-900 rounded-xl shadow-lg">
 
   <div id="menu">
-    <h1 class="text-3xl font-bold mb-2">Movie Room</h1>
-    <p class="mb-6">Crie uma sala para você(s) assistir(rem) :3</p>
+    <h1 class="text-3xl font-bold mb-2 text-center">Sala de Filme</h1>
+    <p class="mb-6 text-center text-gray-400">Crie uma sala para você(s) assistir(em) :3</p>
 
-    <button id="btnCreateRoom" class="w-full py-3 mb-4 bg-indigo-600 rounded text-white font-bold">Criar Sala</button>
+    <button id="btnCreateRoom" class="w-full py-3 mb-4 bg-indigo-600 hover:bg-indigo-700 transition rounded-lg text-white font-bold disabled:opacity-50">Criar Sala</button>
 
     <div class="flex gap-2 mb-4">
-      <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-3 rounded bg-gray-700 text-white uppercase" />
-      <button id="btnJoinRoom" class="py-3 px-5 bg-gray-600 rounded text-white font-bold">Entrar</button>
+      <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-3 rounded-lg bg-gray-800 text-white uppercase focus:ring-2 focus:ring-indigo-500 outline-none" />
+      <button id="btnJoinRoom" class="py-3 px-5 bg-gray-700 hover:bg-gray-600 transition rounded-lg text-white font-bold disabled:opacity-50">Entrar</button>
     </div>
 
-    <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
+    <p id="authStatus" class="text-gray-400 text-sm text-center">Autenticando...</p>
   </div>
 
-  <div id="app" class="hidden flex flex-col">
+  <div id="app" class="hidden flex-col">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-xl font-semibold">Sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
-      <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded">Sair</button>
+      <button id="btnLeaveRoom" class="bg-red-600 hover:bg-red-700 transition text-white px-3 py-1 rounded-lg">Sair</button>
     </div>
 
-    <video id="localPreviewVideo" autoplay playsinline muted class="w-full h-40 bg-gray-900 rounded mb-2 hidden"></video>
+    <video id="localPreviewVideo" autoplay playsinline muted class="w-full h-40 bg-gray-800 rounded-lg mb-2 hidden"></video>
 
-    <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded mb-4"></video>
+    <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded-lg mb-4"></video>
 
-    <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
-      <p>Esperando alguém compartilhar a tela...</p>
-      <button id="btnStartShare" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded font-bold">Compartilhar Tela</button>
+    <div id="videoPlaceholder" class="text-center p-4 bg-gray-800 rounded-lg mb-4">
+      <p class="text-gray-400">Esperando alguém compartilhar a tela...</p>
+      <button id="btnStartShare" class="mt-3 bg-indigo-600 hover:bg-indigo-700 transition text-white px-4 py-2 rounded-lg font-bold">Compartilhar Tela</button>
     </div>
 
     <div id="chatMessages" class="mb-3"></div>
 
-    <div class="flex gap-2">
-      <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-2 rounded bg-gray-700 text-white" />
-      <button id="sendChatBtn" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold">Enviar</button>
+    <div class="flex gap-2 mb-2">
+      <input id="chatInput" placeholder="Sua mensagem Aqui =D" class="flex-grow p-2 rounded-lg bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+      <button id="sendChatBtn" class="bg-indigo-600 hover:bg-indigo-700 transition text-white px-4 py-2 rounded-lg font-bold">Enviar</button>
+    </div>
+
+    <!-- Bloco para a funcionalidade da API Gemini -->
+    <div class="flex flex-col gap-2 p-3 bg-gray-800 rounded-lg">
+      <div class="text-sm font-semibold text-gray-300">✨ Ferramenta Gemini</div>
+      <div class="flex gap-2">
+        <input id="movieTitleInput" placeholder="Nome do filme para sinopse..." class="flex-grow p-2 rounded-lg bg-gray-700 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+        <button id="geminiButton" class="bg-violet-600 hover:bg-violet-700 transition text-white px-4 py-2 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed">✨ Sinopse</button>
+      </div>
     </div>
   </div>
 
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
+<script type="module">
+  // Importações do Firebase v9 (modular)
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+  import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+  import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+  
+  // As chaves de API do Firebase são fornecidas automaticamente pelo ambiente.
+  // Usaremos esta variável para evitar expor as chaves do seu projeto.
+  const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 
-<script>
-  // === CONFIGURAÇÃO FIREBASE CORRIGIDA ===
-  // O erro 'CONFIGURATION_NOT_FOUND' ocorre porque a configuração do Firebase
-  // estava inválida. Agora, o código usa a configuração fornecida
-  // pelo ambiente de forma segura.
-  const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
   const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-  // Verifique se a configuração é válida antes de inicializar o Firebase.
-  if (Object.keys(firebaseConfig).length === 0) {
-    console.error("Firebase config não encontrada. A autenticação não funcionará.");
+  // Verifica se a configuração do Firebase é válida antes de inicializar.
+  if (!firebaseConfig.apiKey) {
+    console.error("Erro: A configuração do Firebase não foi fornecida.");
     document.getElementById('authStatus').textContent = "Erro: Configuração do Firebase ausente.";
-    document.getElementById('btnCreateRoom').disabled = true;
-    document.getElementById('btnJoinRoom').disabled = true;
+    showModal("Erro: As credenciais do Firebase não foram fornecidas. O aplicativo não pode iniciar.");
   } else {
-    const appFirebase = firebase.initializeApp(firebaseConfig);
-    const auth = appFirebase.auth();
-    const db = appFirebase.firestore();
+    // Inicializa o Firebase.
+    const appFirebase = initializeApp(firebaseConfig);
+    const auth = getAuth(appFirebase);
+    const db = getFirestore(appFirebase);
 
-    // Elementos DOM
+    // Variáveis de estado
+    let userId = null;
+    let currentRoomId = null;
+    let peer = null;
+    let localStream = null;
+    let isRoomCreator = false;
+    let isAuthReady = false; // Flag para garantir que a autenticação está pronta.
+
+    // Listeners de Firestore que podem ser desinscritos
+    let unsubscribeRoom = null;
+    let unsubscribeChat = null;
+    let unsubscribeCandidates = null;
+    
+    // Elementos do DOM
     const btnCreateRoom = document.getElementById('btnCreateRoom');
     const btnJoinRoom = document.getElementById('btnJoinRoom');
     const roomInput = document.getElementById('roomInput');
     const authStatus = document.getElementById('authStatus');
-
     const menu = document.getElementById('menu');
     const app = document.getElementById('app');
     const roomCodeDisplay = document.getElementById('roomCodeDisplay');
@@ -121,26 +154,19 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendChatBtn = document.getElementById('sendChatBtn');
+    const movieTitleInput = document.getElementById('movieTitleInput');
+    const geminiButton = document.getElementById('geminiButton');
 
-    // Variáveis de estado
-    let userId = null;
-    let currentRoomId = null;
-    let peer = null;
-    let localStream = null;
-    let isRoomCreator = false; // Flag para identificar se o usuário é o criador da sala
-
-    // Listeners de Firestore para desinscrição
-    let unsubscribeRoom = null;
-    let unsubscribeChat = null;
-    let unsubscribeCandidates = null;
-
-
+    // Desabilita os botões por padrão até a autenticação ser concluída.
+    btnCreateRoom.disabled = true;
+    btnJoinRoom.disabled = true;
+    
     /**
-    * Exibe uma mensagem no painel de chat.
-    * @param {string} text - O texto da mensagem.
-    * @param {string|null} sender - O remetente da mensagem (ex: 'Você', 'Amigo'). Nulo para mensagens do sistema.
-    * @param {boolean} isSystem - Verdadeiro se for uma mensagem do sistema.
-    */
+     * Exibe uma mensagem no painel de chat.
+     * @param {string} text O texto da mensagem.
+     * @param {string|null} sender O remetente da mensagem ('Você', 'Amigo' ou null para sistema).
+     * @param {boolean} isSystem Indica se é uma mensagem do sistema.
+     */
     function showMessage(text, sender = null, isSystem = false) {
       const div = document.createElement('div');
       if (isSystem) {
@@ -150,79 +176,63 @@
         div.innerHTML = `<strong>${sender}:</strong> ${text}`;
       }
       chatMessages.appendChild(div);
-      chatMessages.scrollTop = chatMessages.scrollHeight; // Rola para a mensagem mais recente
+      chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     /**
-    * Exibe um modal customizado no lugar de 'alert'.
-    * @param {string} message - A mensagem a ser exibida.
-    */
+     * Exibe um modal personalizado.
+     * @param {string} message A mensagem a ser exibida.
+     */
     function showModal(message) {
+      // Cria o elemento do modal para evitar `alert()`.
       const modal = document.createElement('div');
-      modal.style.position = 'fixed';
-      modal.style.top = '50%';
-      modal.style.left = '50%';
-      modal.style.transform = 'translate(-50%, -50%)';
-      modal.style.backgroundColor = '#1f2937';
-      modal.style.color = '#e5e7eb';
-      modal.style.padding = '1.5rem';
-      modal.style.borderRadius = '0.5rem';
-      modal.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-      modal.style.zIndex = '1000';
-      modal.style.width = '300px';
-      modal.style.textAlign = 'center';
+      modal.classList.add('fixed', 'inset-0', 'flex', 'items-center', 'justify-center', 'bg-black', 'bg-opacity-75', 'z-50');
+
+      const modalContent = document.createElement('div');
+      modalContent.classList.add('bg-gray-800', 'p-6', 'rounded-lg', 'shadow-xl', 'text-white', 'max-w-sm', 'w-full', 'text-center');
 
       const text = document.createElement('p');
       text.textContent = message;
-      text.style.marginBottom = '1rem';
-      modal.appendChild(text);
+      text.classList.add('mb-4');
+      modalContent.appendChild(text);
 
       const button = document.createElement('button');
       button.textContent = 'OK';
-      button.style.backgroundColor = '#4f46e5';
-      button.style.color = 'white';
-      button.style.padding = '0.5rem 1rem';
-      button.style.borderRadius = '0.25rem';
-      button.style.fontWeight = 'bold';
+      button.classList.add('px-4', 'py-2', 'bg-indigo-600', 'rounded-lg', 'font-bold', 'hover:bg-indigo-700', 'transition');
       button.onclick = () => document.body.removeChild(modal);
-      modal.appendChild(button);
+      modalContent.appendChild(button);
+      modal.appendChild(modalContent);
 
       document.body.appendChild(modal);
     }
-
-    // Listener de estado de autenticação do Firebase.
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        userId = user.uid;
-        authStatus.textContent = 'Conectado com sucesso!';
-        btnCreateRoom.disabled = false;
-        btnJoinRoom.disabled = false;
-        console.log("Usuário autenticado com ID:", userId);
-      } else {
-        userId = null;
-        authStatus.textContent = 'Autenticando...';
-        btnCreateRoom.disabled = true;
-        btnJoinRoom.disabled = true;
-        if (!auth.currentUser) {
-          if (initialAuthToken) {
-            auth.signInWithCustomToken(initialAuthToken).catch(err => {
-              authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
-              console.error("Erro na autenticação com token customizado:", err);
-            });
-          } else {
-            auth.signInAnonymously().catch(err => {
-              authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
-              console.error("Erro na autenticação anônima:", err);
-            });
-          }
+    
+    // Função de inicialização da autenticação.
+    async function initializeAuth() {
+        try {
+            if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+                await signInAnonymously(auth);
+            }
+            userId = auth.currentUser.uid;
+            isAuthReady = true;
+            authStatus.textContent = 'Conectado com sucesso!';
+            btnCreateRoom.disabled = false;
+            btnJoinRoom.disabled = false;
+        } catch (err) {
+            console.error("Erro na autenticação:", err);
+            authStatus.textContent = 'Não foi possível conectar aos serviços.';
+            showModal('Não foi possível autenticar. Por favor, tente novamente mais tarde.');
         }
-      }
-    });
+    }
+
+    // Chama a função de autenticação assim que o script é carregado.
+    initializeAuth();
 
     /**
-    * Gera um código de sala aleatório de 4 letras maiúsculas.
-    * @returns {string} O código da sala.
-    */
+     * Gera um código de sala aleatório de 4 letras maiúsculas.
+     * @returns {string} O código da sala.
+     */
     function generateRoomCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
       let code = '';
@@ -233,19 +243,18 @@
     }
     
     /**
-    * Retorna a referência correta para a coleção 'movie-rooms' no Firestore.
-    * @param {string} roomId - O ID da sala.
-    * @returns {firebase.firestore.DocumentReference} A referência do documento da sala.
-    */
+     * Retorna a referência correta do documento Firestore para uma sala.
+     * @param {string} roomId O ID da sala.
+     * @returns {object} A referência do documento da sala.
+     */
     function getRoomRef(roomId) {
-      return db.collection('artifacts').doc(appId).collection('public').doc('data').collection('movie-rooms').doc(roomId);
+      return doc(db, `artifacts/${appId}/public/data/movie-rooms/${roomId}`);
     }
 
-
-    // Evento de clique para o botão "Create New Room"
+    // Evento de clique para o botão "Criar Sala".
     btnCreateRoom.onclick = async () => {
-      if (!userId) {
-        showModal('Autenticando... Espere um pouco :3.');
+      if (!isAuthReady) {
+        showModal('O aplicativo ainda está autenticando. Por favor, espere um momento.');
         return;
       }
 
@@ -254,23 +263,23 @@
 
       currentRoomId = generateRoomCode();
       roomCodeDisplay.textContent = currentRoomId;
-      isRoomCreator = true; // Define o usuário como criador da sala
+      isRoomCreator = true;
 
       const roomRef = getRoomRef(currentRoomId);
-      const callerCandidates = roomRef.collection('callerCandidates');
+      const callerCandidatesRef = collection(roomRef, 'callerCandidates');
 
       try {
         peer = new SimplePeer({ initiator: true, trickle: true });
 
         peer.on('signal', async data => {
           if (data.type === 'offer') {
-            await roomRef.set({
+            await setDoc(roomRef, {
               offer: data,
               creatorId: userId,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+              createdAt: serverTimestamp()
             }, { merge: true });
           } else if (data.candidate) {
-            await callerCandidates.add(data);
+            await addDoc(callerCandidatesRef, data);
           }
         });
 
@@ -280,17 +289,15 @@
           }
         });
 
-        unsubscribeRoom = roomRef.onSnapshot(snapshot => {
+        unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
           const data = snapshot.data();
-          if (data && data.answer) {
-            if (peer && peer.initiator && data.answer.type === 'answer') {
-              peer.signal(data.answer);
-            }
+          if (data && data.answer && peer && peer.initiator && data.answer.type === 'answer') {
+            peer.signal(data.answer);
           }
         });
 
-        const calleeCandidates = roomRef.collection('calleeCandidates');
-        unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
+        const calleeCandidatesRef = collection(roomRef, 'calleeCandidates');
+        unsubscribeCandidates = onSnapshot(calleeCandidatesRef, (snapshot) => {
           snapshot.docChanges().forEach(change => {
             if (change.type === 'added') {
               peer.signal(change.doc.data());
@@ -300,52 +307,50 @@
 
         peer.on('connect', () => {
           showMessage('Amigo conectado!', null, true);
-          console.log('WebRTC Peer Conectado!');
         });
 
         peer.on('stream', stream => {
           videoPlaceholder.style.display = 'none';
           remoteVideo.srcObject = stream;
           if (remoteVideo.paused) {
-            remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto no host:", e));
+            remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
           }
         });
 
         peer.on('close', () => {
           showMessage('Amigo desconectado.', null, true);
-          console.log('WebRTC Peer Desconectado.');
           hangUp();
         });
 
         peer.on('error', err => {
-          showModal('Erro na conexão: ' + err.message);
-          console.error("Erro SimplePeer:", err);
+          showModal('Erro de conexão: ' + err.message);
+          console.error("Erro do SimplePeer:", err);
           hangUp();
         });
 
-        menu.style.display = 'none';
-        app.style.display = 'flex';
+        menu.classList.add('hidden');
+        app.classList.remove('hidden');
+        app.classList.add('flex');
         setupChatListener();
 
         btnCreateRoom.textContent = 'Criar Sala';
-
       } catch (e) {
-        console.error("Erro ao criar a sala:", e);
+        console.error("Erro ao criar sala:", e);
         showModal("Erro ao criar a sala. Verifique a conexão com o Firebase.");
         hangUp();
       }
     };
 
-    // Evento de clique para o botão "Entrar" na sala
+    // Evento de clique para o botão "Entrar".
     btnJoinRoom.onclick = async () => {
-      if (!userId) {
-        showModal('Autenticando... Por favor aguarde.');
+      if (!isAuthReady) {
+        showModal('O aplicativo ainda está autenticando. Por favor, espere um momento.');
         return;
       }
 
       const code = roomInput.value.trim().toUpperCase();
       if (!code || code.length !== 4) {
-        showModal('Por favor, insira um código válido de 4 letras.');
+        showModal('Por favor, insira um código de 4 letras válido.');
         return;
       }
 
@@ -354,78 +359,72 @@
 
       currentRoomId = code;
       roomCodeDisplay.textContent = currentRoomId;
-      isRoomCreator = false; // Define o usuário como não criador da sala
+      isRoomCreator = false;
 
       try {
         const roomRef = getRoomRef(currentRoomId);
-        const roomSnapshot = await roomRef.get();
+        let roomData = null;
+        const unsubscribeRoomOnce = onSnapshot(roomRef, async (snapshot) => {
+          if (snapshot.exists()) {
+            roomData = snapshot.data();
+            if (roomData && roomData.offer) {
+              unsubscribeRoomOnce();
+              peer = new SimplePeer({ initiator: false, trickle: true });
+              peer.signal(roomData.offer);
 
-        if (!roomSnapshot.exists) {
-          showModal(`A sala "${currentRoomId}" não foi encontrada.`);
-          btnJoinRoom.disabled = false;
-          btnJoinRoom.textContent = 'Entrar';
-          return;
-        }
+              peer.on('signal', async data => {
+                if (data.type === 'answer') {
+                  await setDoc(roomRef, { answer: data }, { merge: true });
+                } else if (data.candidate) {
+                  const calleeCandidatesRef = collection(roomRef, 'calleeCandidates');
+                  await addDoc(calleeCandidatesRef, data);
+                }
+              });
 
-        const roomData = roomSnapshot.data();
+              peer.on('connect', () => {
+                showMessage('Amigo conectado!', null, true);
+              });
 
-        peer = new SimplePeer({ initiator: false, trickle: true });
-        peer.signal(roomData.offer);
+              peer.on('stream', stream => {
+                videoPlaceholder.style.display = 'none';
+                remoteVideo.srcObject = stream;
+                if (remoteVideo.paused) {
+                  remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto:", e));
+                }
+              });
 
-        peer.on('signal', async data => {
-          if (data.type === 'answer') {
-            await roomRef.update({ answer: data });
-          } else if (data.candidate) {
-            const calleeCandidates = roomRef.collection('calleeCandidates');
-            await calleeCandidates.add(data);
-          }
-        });
+              peer.on('close', () => {
+                showMessage('Amigo desconectado.', null, true);
+                hangUp();
+              });
 
-        peer.on('negotiated', () => {
-          console.log('Evento de re-negociação acionado no cliente.');
-        });
+              peer.on('error', err => {
+                showModal('Erro de conexão: ' + err.message);
+                console.error("Erro do SimplePeer:", err);
+                hangUp();
+              });
 
+              const callerCandidatesRef = collection(roomRef, 'callerCandidates');
+              unsubscribeCandidates = onSnapshot(callerCandidatesRef, (snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                  if (change.type === 'added') {
+                    peer.signal(change.doc.data());
+                  }
+                });
+              });
 
-        const callerCandidates = roomRef.collection('callerCandidates');
-        unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(change => {
-            if (change.type === 'added') {
-              peer.signal(change.doc.data());
+              menu.classList.add('hidden');
+              app.classList.remove('hidden');
+              app.classList.add('flex');
+              setupChatListener();
             }
-          });
-        });
-
-        peer.on('connect', () => {
-          showMessage('Amigo conectado!', null, true);
-          console.log('WebRTC Peer Conectado!');
-        });
-
-        peer.on('stream', stream => {
-          videoPlaceholder.style.display = 'none';
-          remoteVideo.srcObject = stream;
-          if (remoteVideo.paused) {
-            remoteVideo.play().catch(e => console.error("Erro ao tentar reproduzir vídeo remoto no cliente:", e));
+          } else {
+            showModal(`A sala "${currentRoomId}" não foi encontrada.`);
+            btnJoinRoom.disabled = false;
+            btnJoinRoom.textContent = 'Entrar';
+            unsubscribeRoomOnce();
           }
         });
-
-        peer.on('close', () => {
-          showMessage('Amigo desconectado.', null, true);
-          console.log('WebRTC Peer Desconectado.');
-          hangUp();
-        });
-
-        peer.on('error', err => {
-          showModal('Erro na conexão: ' + err.message);
-          console.error("Erro SimplePeer:", err);
-          hangUp();
-        });
-
-        menu.style.display = 'none';
-        app.style.display = 'flex';
-        setupChatListener();
-
-        btnJoinRoom.disabled = false;
-        btnJoinRoom.textContent = 'Entrar';
 
       } catch (e) {
         showModal('Ocorreu um erro inesperado ao tentar entrar na sala.');
@@ -434,7 +433,7 @@
       }
     };
 
-    // Evento de clique para o botão "Compartilhar Tela"
+    // Evento de clique para o botão "Compartilhar Tela".
     btnStartShare.onclick = async () => {
       try {
         if (localStream) {
@@ -449,64 +448,56 @@
 
         if (peer) {
           localPreviewVideo.srcObject = localStream;
-          localPreviewVideo.style.display = 'block';
-          videoPlaceholder.style.display = 'none';
-
+          localPreviewVideo.classList.remove('hidden');
+          videoPlaceholder.classList.add('hidden');
           peer.addStream(localStream);
         } else {
           localStream.getTracks().forEach(track => track.stop());
           localStream = null;
-          showModal('Por favor, crie ou entre em uma sala antes de compartilhar a tela.');
+          showModal('Por favor, crie ou entre em uma sala antes de compartilhar sua tela.');
           return;
         }
 
         localStream.getVideoTracks()[0].onended = () => {
-          showMessage('Compartilhamento de tela encerrado.', null, true);
+          showMessage('O compartilhamento de tela terminou.', null, true);
           btnStartShare.disabled = false;
           btnStartShare.textContent = 'Compartilhar Tela';
-
           if (peer && localStream) {
             peer.removeStream(localStream);
           }
-
           if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
           }
-
           remoteVideo.srcObject = null;
-          videoPlaceholder.style.display = 'block';
-          localPreviewVideo.style.display = 'none';
+          videoPlaceholder.classList.remove('hidden');
+          localPreviewVideo.classList.add('hidden');
         };
 
         btnStartShare.disabled = true;
         btnStartShare.textContent = 'Compartilhando...';
-
       } catch (err) {
         console.error("Erro ao compartilhar a tela:", err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          showModal('Permissão para compartilhar a tela negada. Por favor, verifique as configurações de privacidade do seu navegador ou execute em um ambiente com permissão.');
+          showModal('Permissão para compartilhar a tela negada. Verifique as configurações de privacidade do seu navegador.');
         } else {
           showModal('Ocorreu um erro inesperado ao tentar compartilhar a tela: ' + err.message);
         }
       }
     };
 
-
-    // Evento de clique para o botão "Enviar" do chat
+    // Evento de clique para o botão de chat "Enviar".
     sendChatBtn.onclick = async () => {
       const text = chatInput.value.trim();
       if (!text || !currentRoomId) return;
-
       showMessage(text, 'Você');
       chatInput.value = '';
-
       try {
-        const chatRef = getRoomRef(currentRoomId).collection('chat');
-        await chatRef.add({
+        const chatRef = collection(getRoomRef(currentRoomId), 'chat');
+        await addDoc(chatRef, {
           text,
           senderId: userId,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          timestamp: serverTimestamp()
         });
       } catch (e) {
         showModal('Falha ao enviar a mensagem.');
@@ -514,7 +505,7 @@
       }
     };
 
-    // Evento de teclado para enviar mensagem do chat com Enter
+    // Evento para enviar mensagem de chat com a tecla Enter.
     chatInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -523,13 +514,12 @@
     });
 
     /**
-    * Configura o listener em tempo real para as mensagens do chat no Firestore.
-    */
+     * Configura o listener em tempo real para as mensagens de chat no Firestore.
+     */
     function setupChatListener() {
       if (unsubscribeChat) unsubscribeChat();
-
-      const chatRef = getRoomRef(currentRoomId).collection('chat').orderBy('timestamp');
-      unsubscribeChat = chatRef.onSnapshot(snapshot => {
+      const chatRef = collection(getRoomRef(currentRoomId), 'chat');
+      unsubscribeChat = onSnapshot(chatRef, (snapshot) => {
         snapshot.docChanges().forEach(change => {
           if (change.type === 'added') {
             const data = change.doc.data();
@@ -541,15 +531,70 @@
       });
     }
 
-    // Evento de clique para o botão "Sair da Sala"
+    // Evento de clique para o botão "Sair da Sala".
     btnLeaveRoom.onclick = () => {
-      hangUp(true); // Indica que a saída foi iniciada pelo usuário
+      hangUp(true);
+    };
+
+    // Função para chamar a API Gemini para gerar uma sinopse.
+    async function getMovieSynopsis(movieTitle) {
+      if (!movieTitle) {
+        showMessage('Por favor, digite o nome de um filme.', 'Gemini Bot', false);
+        return;
+      }
+      
+      geminiButton.disabled = true;
+      geminiButton.textContent = 'Gerando...';
+      showMessage('Gerando sinopse e curiosidade para "' + movieTitle + '"...', 'Gemini Bot', true);
+
+      try {
+        // A chave da API é fornecida automaticamente pelo ambiente de execução.
+        const apiKey = ""; 
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        const prompt = `Gere uma sinopse curta e um fato interessante sobre o filme "${movieTitle}". Responda em português. A formatação deve ser: **Sinopse:** <sinopse> **Fato Interessante:** <fato>.`;
+
+        const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+        const payload = { contents: chatHistory };
+
+        let response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Erro na API do Gemini: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts) {
+          const text = result.candidates[0].content.parts[0].text;
+          showMessage(text, 'Gemini Bot', false);
+        } else {
+          showMessage('Não foi possível gerar a sinopse. A resposta da API estava vazia ou em um formato inesperado.', 'Gemini Bot', false);
+          console.error("Erro na resposta da API Gemini:", result);
+        }
+      } catch (error) {
+        showMessage('Ocorreu um erro ao conectar com o Gemini Bot. Verifique a sua conexão.', 'Gemini Bot', false);
+        console.error("Erro na chamada da API Gemini:", error);
+      } finally {
+        geminiButton.disabled = false;
+        geminiButton.textContent = '✨ Sinopse';
+        movieTitleInput.value = '';
+      }
+    }
+
+    // Evento de clique para o botão Gemini
+    geminiButton.onclick = () => {
+      const movieTitle = movieTitleInput.value.trim();
+      getMovieSynopsis(movieTitle);
     };
 
     /**
-    * Função para encerrar a conexão WebRTC, parar streams e resetar o estado da UI e variáveis.
-    * @param {boolean} userInitiated - Verdadeiro se a função foi chamada por uma ação explícita do usuário (ex: botão Sair).
-    */
+     * Encerra a conexão WebRTC, para os streams e reseta a UI.
+     * @param {boolean} userInitiated Indica se a ação foi iniciada pelo usuário.
+     */
     async function hangUp(userInitiated = false) {
       if (peer) {
         peer.destroy();
@@ -559,26 +604,15 @@
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
       }
-      if (unsubscribeRoom) {
-        unsubscribeRoom();
-        unsubscribeRoom = null;
-      }
-      if (unsubscribeChat) {
-        unsubscribeChat();
-        unsubscribeChat = null;
-      }
-      if (unsubscribeCandidates) {
-        unsubscribeCandidates();
-        unsubscribeCandidates = null;
-      }
+      if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
+      if (unsubscribeChat) { unsubscribeChat(); unsubscribeChat = null; }
+      if (unsubscribeCandidates) { unsubscribeCandidates(); unsubscribeCandidates = null; }
 
       if (isRoomCreator && currentRoomId && userInitiated) {
         try {
-          const roomRef = getRoomRef(currentRoomId);
-          await roomRef.delete();
-          console.log(`Sala ${currentRoomId} apagada pelo criador.`);
+          await deleteDoc(getRoomRef(currentRoomId));
         } catch (error) {
-          console.error("Erro ao apagar a sala:", error);
+          console.error("Erro ao deletar sala:", error);
         }
       }
 
@@ -590,31 +624,18 @@
       roomInput.value = '';
       isRoomCreator = false;
 
-      menu.style.display = 'block';
-      app.style.display = 'none';
-
+      menu.classList.remove('hidden');
+      app.classList.add('hidden');
+      
       btnCreateRoom.disabled = false;
       btnCreateRoom.textContent = 'Criar Sala';
       btnJoinRoom.disabled = false;
       btnJoinRoom.textContent = 'Entrar';
       btnStartShare.disabled = false;
       btnStartShare.textContent = 'Compartilhar Tela';
-      videoPlaceholder.style.display = 'block';
-      localPreviewVideo.style.display = 'none';
+      videoPlaceholder.classList.remove('hidden');
+      localPreviewVideo.classList.add('hidden');
     }
-
-    window.addEventListener('beforeunload', () => {
-      if (isRoomCreator && currentRoomId) {
-        getRoomRef(currentRoomId).delete()
-          .then(() => console.log("Sala tentando ser apagada ao descarregar a página (criador)."))
-          .catch(e => console.error("Erro ao tentar apagar sala ao descarregar (criador):", e));
-      }
-    });
-
-    window.onload = () => {
-      btnCreateRoom.disabled = true;
-      btnJoinRoom.disabled = true;
-    };
   }
 </script>
 
