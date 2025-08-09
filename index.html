@@ -255,7 +255,7 @@
         let userId = null;
         let currentRoomId = null;
         let videoPeer = null;
-        let voicePeer = null;
+        let voicePeer = null; // Variável global para a conexão de voz
         let localVideoStream = null;
         let localAudioStream = null;
         let isRoomCreator = false;
@@ -352,6 +352,7 @@
             }
             isVoiceHost = false;
             btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
+            btnJoinVoiceChat.onclick = startVoiceChat; // Reseta o handler do botão
             voiceStatusText.textContent = 'Não conectado';
             voiceStatusIndicator.classList.remove('bg-green-500', 'bg-red-500');
             voiceStatusIndicator.classList.add('bg-gray-500');
@@ -718,20 +719,25 @@
                 voiceChatView.classList.remove('hidden');
                 textChatView.classList.add('hidden');
                 toggleChatMode.innerHTML = `<i class="fas fa-comment-dots"></i>`;
-                // Se já estiver em uma sala, prepara o voice chat
-                if (currentRoomId) {
-                    // A UI já mostra o botão para entrar no voice chat
-                }
             }
         };
 
-        btnJoinVoiceChat.onclick = async () => {
+        btnJoinVoiceChat.onclick = startVoiceChat;
+
+        async function startVoiceChat() {
             if (!currentRoomId) {
                 showModal('Por favor, entre ou crie uma sala primeiro.');
                 return;
             }
 
+            // Desabilita o botão para evitar cliques múltiplos
+            btnJoinVoiceChat.disabled = true;
+            voiceStatusText.textContent = 'Conectando...';
+            voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-green-500');
+            voiceStatusIndicator.classList.add('bg-red-500');
+
             try {
+                // Tenta obter o stream de áudio
                 localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
                 const voiceRoomRef = db.collection('voice-rooms').doc(currentRoomId);
@@ -741,16 +747,16 @@
                 if (isVoiceHost) {
                     // Se a sala de voz não existe, você é o host
                     await voiceRoomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                    peer = new SimplePeer({ initiator: true, trickle: true, stream: localAudioStream });
+                    voicePeer = new SimplePeer({ initiator: true, trickle: true, stream: localAudioStream });
                     
-                    peer.on('signal', async data => {
+                    voicePeer.on('signal', async data => {
                         if (data.type === 'offer') {
                             await voiceRoomRef.set({ offer: data }, { merge: true });
                             unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(snapshot => {
                                 const voiceData = snapshot.data();
                                 if (voiceData && voiceData.answer) {
-                                    if (peer && voiceData.answer.type === 'answer') {
-                                        peer.signal(voiceData.answer);
+                                    if (voicePeer && voiceData.answer.type === 'answer') {
+                                        voicePeer.signal(voiceData.answer);
                                     }
                                 }
                             });
@@ -761,9 +767,9 @@
 
                 } else {
                     // Se a sala de voz existe, você é o convidado
-                    peer = new SimplePeer({ initiator: false, trickle: true, stream: localAudioStream });
+                    voicePeer = new SimplePeer({ initiator: false, trickle: true, stream: localAudioStream });
                     
-                    peer.on('signal', async data => {
+                    voicePeer.on('signal', async data => {
                         if (data.type === 'answer') {
                             await voiceRoomRef.update({ answer: data });
                         } else if (data.candidate) {
@@ -773,35 +779,36 @@
 
                     unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(async snapshot => {
                         const voiceData = snapshot.data();
-                        if (voiceData && voiceData.offer && peer && !peer.remoteDescription) {
-                            peer.signal(voiceData.offer);
+                        if (voiceData && voiceData.offer && voicePeer && !voicePeer.remoteDescription) {
+                            voicePeer.signal(voiceData.offer);
                         }
                     });
                 }
                 
                 // Configura os listeners para ambos os hosts e convidados
                 const remoteAudio = new Audio();
-                peer.on('stream', stream => {
+                voicePeer.on('stream', stream => {
                     remoteAudio.srcObject = stream;
                     remoteAudio.play();
                     remoteVoiceStatus.textContent = 'Amigo conectado!';
                 });
 
-                peer.on('connect', () => {
+                voicePeer.on('connect', () => {
                     voiceStatusText.textContent = 'Conectado!';
                     voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-red-500');
                     voiceStatusIndicator.classList.add('bg-green-500');
                     showMessage('Você entrou no voice chat.', null, true);
                     btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
-                    btnJoinVoiceChat.onclick = stopVoiceChat;
+                    btnJoinVoiceChat.onclick = stopVoiceChat; // Troca o handler do botão
+                    btnJoinVoiceChat.disabled = false;
                 });
 
-                peer.on('close', () => {
+                voicePeer.on('close', () => {
                     showMessage('Voice chat encerrado.', null, true);
                     stopVoiceChat();
                 });
 
-                peer.on('error', err => {
+                voicePeer.on('error', err => {
                     showModal('Erro na conexão de voz: ' + err.message);
                     console.error("Erro no voice chat:", err);
                     stopVoiceChat();
@@ -811,21 +818,855 @@
                 const candidatesCollection = isVoiceHost ? 'calleeCandidates' : 'callerCandidates';
                 unsubscribeVoiceCandidates = voiceRoomRef.collection(candidatesCollection).onSnapshot(snapshot => {
                     snapshot.docChanges().forEach(change => {
-                        if (change.type === 'added' && peer) {
-                            peer.signal(change.doc.data());
+                        if (change.type === 'added' && voicePeer) {
+                            voicePeer.signal(change.doc.data());
                         }
                     });
                 });
-                
-                voiceStatusText.textContent = 'Conectando...';
-                voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-green-500');
-                voiceStatusIndicator.classList.add('bg-red-500');
-                btnJoinVoiceChat.disabled = true;
 
             } catch (err) {
+                // Em caso de erro, limpa o estado e reabilita o botão.
                 showModal('Não foi possível acessar o microfone. Verifique as permissões do seu navegador.');
                 console.error("Erro ao iniciar voice chat:", err);
                 stopVoiceChat();
+                btnJoinVoiceChat.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Movie Room with Voice Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <!-- Inclui Font Awesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Estilos base para a fonte e o tema */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #e5e7eb;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        /* Estilos para a área de chat */
+        #chatMessages {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0.75rem;
+            background: #1f2937;
+            border-radius: 0.5rem;
+            flex-grow: 1;
+        }
+
+        /* Estilo para as mensagens do sistema */
+        .system-msg {
+            text-align: center;
+            font-style: italic;
+            color: #9ca3af;
+        }
+
+        /* Classes de estilo para os botões */
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+
+        /* Classes de estilo para a área de vídeo e tela */
+        .movie-screen-container {
+            position: relative;
+            background: #0f172a;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+        }
+
+        .movie-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 1.5rem;
+        }
+
+        .pip-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 10;
+            background-color: rgba(31, 41, 55, 0.7);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .pip-button:hover {
+            background-color: rgba(79, 70, 229, 0.9);
+        }
+
+        .chat-toggle-button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .chat-toggle-button:hover {
+            background-color: #4338ca;
+        }
+
+        .chat-status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container" class="max-w-7xl w-full p-6 bg-gray-900 rounded-xl shadow-lg flex flex-col">
+
+        <!-- UI do Menu (Não alterada) -->
+        <div id="menu" class="flex flex-col items-center">
+            <h1 class="text-3xl font-bold mb-2">Movie Room</h1>
+            <p class="mb-6 text-gray-400">Crie uma sala para assistir com amigos</p>
+
+            <button id="btnCreateRoom" class="w-full py-3 mb-4 btn-primary">Create New Room</button>
+
+            <div class="flex gap-2 mb-4 w-full">
+                <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-3 rounded bg-gray-700 text-white uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <button id="btnJoinRoom" class="py-3 px-5 bg-gray-600 rounded text-white font-bold">Entrar</button>
+            </div>
+
+            <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
+        </div>
+
+        <!-- UI da Aplicação (Layout alterado) -->
+        <div id="app" class="hidden flex-col">
+            <!-- Barra superior com o código da sala e botões de controle -->
+            <div class="flex justify-between items-center mb-6 px-4">
+                <h2 class="text-2xl font-bold">Sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
+                <div class="flex gap-4">
+                    <!-- Botão para alternar entre chat de texto e voice chat -->
+                    <button id="toggleChatMode" class="chat-toggle-button" title="Alternar modo de chat">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button id="btnLeaveRoom" class="bg-red-600 text-white px-4 py-2 rounded-full hover:bg-red-700 transition">Sair</button>
+                </div>
+            </div>
+
+            <!-- Conteúdo principal: Layout em duas colunas para desktop -->
+            <div class="md:grid md:grid-cols-3 md:gap-8 flex-grow">
+
+                <!-- Coluna da Esquerda: Reprodutor de Vídeo -->
+                <div class="col-span-2 flex flex-col items-center">
+                    <!-- Falsa "Tela" para dar um toque de cinema -->
+                    <div class="w-full text-center text-gray-300 italic mb-4">
+                        <p class="text-xl">Tela de Projeção</p>
+                    </div>
+
+                    <!-- Contêiner do vídeo com aspect ratio 16:9 -->
+                    <div class="movie-screen-container w-full">
+                        <!-- Botão Picture-in-Picture -->
+                        <button id="pipButton" class="pip-button" style="display: none;" title="Picture-in-Picture">
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                        <!-- Vídeo principal que exibe o stream local (host) ou remoto (cliente) -->
+                        <video id="remoteVideo" autoplay playsinline controls class="movie-screen hidden"></video>
+                        <!-- Placeholder enquanto espera o stream -->
+                        <div id="videoPlaceholder" class="movie-screen flex items-center justify-center text-center text-gray-400 p-8">
+                            <div>
+                                <p class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
+                                <button id="btnStartShare" class="mt-3 btn-primary px-8">Compartilhar Tela</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coluna da Direita: Área de Chat -->
+                <div class="col-span-1 flex flex-col mt-8 md:mt-0">
+                    <h3 class="text-xl font-semibold mb-3 text-center">Chat da Sala</h3>
+                    
+                    <!-- View de chat de texto -->
+                    <div id="textChatView">
+                        <div id="chatMessages" class="mb-3"></div>
+                        <div class="flex gap-2">
+                            <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-2 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                            <button id="sendChatBtn" class="btn-primary">Enviar</button>
+                        </div>
+                    </div>
+
+                    <!-- View de voice chat -->
+                    <div id="voiceChatView" class="hidden flex-col items-center justify-center p-4 h-full">
+                        <div class="flex items-center gap-2 mb-4">
+                            <span id="voiceStatusIndicator" class="chat-status-indicator bg-gray-500"></span>
+                            <span id="voiceStatusText" class="text-lg">Não conectado</span>
+                        </div>
+                        <div id="voiceChatControls" class="flex flex-col gap-4 w-full text-center">
+                            <p class="text-sm text-gray-400">Entre para conversar por voz com os outros participantes.</p>
+                            <button id="btnJoinVoiceChat" class="w-full py-3 btn-primary">
+                                Entrar no Voice Chat
+                            </button>
+                            <div id="voiceChatActiveInfo" class="hidden flex flex-col items-center gap-2">
+                                <p class="font-semibold text-green-400">Você está no voice chat!</p>
+                                <p id="remoteVoiceStatus" class="text-sm text-gray-400">Aguardando outro(s) participante(s)...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
+
+    <script>
+        // === CONFIGURAÇÃO FIREBASE ===
+        const firebaseConfig = {
+            apiKey: "AIzaSyA3HIqR4rT3NANEulauFy_-3OkuWOqYhqk",
+            authDomain: "salinha-de-filme.firebaseapp.com",
+            projectId: "salinha-de-filme",
+            storageBucket: "salinha-de-filme.firebasestorage.app",
+            messagingSenderId: "589071044223",
+            appId: "1:589071044223:web:2e8c6e0b4644bc99fbf94a"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // DOM elements
+        const btnCreateRoom = document.getElementById('btnCreateRoom');
+        const btnJoinRoom = document.getElementById('btnJoinRoom');
+        const roomInput = document.getElementById('roomInput');
+        const authStatus = document.getElementById('authStatus');
+        const menu = document.getElementById('menu');
+        const app = document.getElementById('app');
+        const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const btnLeaveRoom = document.getElementById('btnLeaveRoom');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const videoPlaceholder = document.getElementById('videoPlaceholder');
+        const btnStartShare = document.getElementById('btnStartShare');
+        const pipButton = document.getElementById('pipButton');
+
+        // Chat UI elements
+        const toggleChatMode = document.getElementById('toggleChatMode');
+        const textChatView = document.getElementById('textChatView');
+        const voiceChatView = document.getElementById('voiceChatView');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatBtn = document.getElementById('sendChatBtn');
+        const btnJoinVoiceChat = document.getElementById('btnJoinVoiceChat');
+        const voiceStatusText = document.getElementById('voiceStatusText');
+        const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
+        const voiceChatActiveInfo = document.getElementById('voiceChatActiveInfo');
+        const remoteVoiceStatus = document.getElementById('remoteVoiceStatus');
+
+        // Variáveis de estado
+        let userId = null;
+        let currentRoomId = null;
+        let videoPeer = null;
+        let voicePeer = null; // Variável global para a conexão de voz
+        let localVideoStream = null;
+        let localAudioStream = null;
+        let isRoomCreator = false;
+        let isVoiceHost = false;
+
+        // Listeners de Firestore para desinscrição
+        let unsubscribeVideoRoom = null;
+        let unsubscribeVideoCandidates = null;
+        let unsubscribeVoiceRoom = null;
+        let unsubscribeVoiceCandidates = null;
+        let unsubscribeChat = null;
+        
+        // Função para exibir um modal customizado em vez de um `alert()`
+        function showModal(message) {
+            const modal = document.createElement('div');
+            modal.classList.add('fixed', 'inset-0', 'flex', 'items-center', 'justify-center', 'bg-black', 'bg-opacity-75', 'z-50');
+            modal.innerHTML = `
+              <div class="bg-gray-800 p-6 rounded-lg shadow-xl text-white max-w-sm w-full text-center">
+                <p class="mb-4">${message}</p>
+                <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 btn-primary hover:bg-indigo-700 transition">OK</button>
+              </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        /**
+         * Exibe uma mensagem no painel de chat.
+         * @param {string} text - O texto da mensagem.
+         * @param {string|null} sender - O remetente da mensagem (ex: 'Você', 'Amigo'). Nulo para mensagens do sistema.
+         * @param {boolean} isSystem - Verdadeiro se for uma mensagem do sistema.
+         */
+        function showMessage(text, sender = null, isSystem = false) {
+            const div = document.createElement('div');
+            if (isSystem) {
+                div.textContent = text;
+                div.classList.add('system-msg');
+            } else {
+                div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            }
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                userId = user.uid;
+                authStatus.textContent = 'Conectado com sucesso!';
+                btnCreateRoom.disabled = false;
+                btnJoinRoom.disabled = false;
+            } else {
+                userId = null;
+                authStatus.textContent = 'Autenticando...';
+                btnCreateRoom.disabled = true;
+                btnJoinRoom.disabled = true;
+                if (!auth.currentUser) {
+                    auth.signInAnonymously().catch(err => {
+                        authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
+                        console.error("Erro na autenticação anônima:", err);
+                    });
+                }
+            }
+        });
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            let code = '';
+            for (let i = 0; i < 4; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+        
+        // --- FUNÇÕES DE CONEXÃO E LIMPEZA ---
+        
+        /**
+         * Encerra a conexão de voice chat e limpa o estado.
+         */
+        function stopVoiceChat() {
+            if (voicePeer) {
+                voicePeer.destroy();
+                voicePeer = null;
+            }
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(track => track.stop());
+                localAudioStream = null;
+            }
+            if (unsubscribeVoiceRoom) {
+                unsubscribeVoiceRoom();
+                unsubscribeVoiceRoom = null;
+            }
+            if (unsubscribeVoiceCandidates) {
+                unsubscribeVoiceCandidates();
+                unsubscribeVoiceCandidates = null;
+            }
+            isVoiceHost = false;
+            btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
+            btnJoinVoiceChat.onclick = startVoiceChat; // Reseta o handler do botão
+            voiceStatusText.textContent = 'Não conectado';
+            voiceStatusIndicator.classList.remove('bg-green-500', 'bg-red-500');
+            voiceStatusIndicator.classList.add('bg-gray-500');
+            voiceChatActiveInfo.classList.add('hidden');
+            showMessage('Você saiu do voice chat.', null, true);
+        }
+
+        /**
+         * Encerra a conexão de vídeo e limpa o estado.
+         */
+        async function stopVideoChat(userInitiated = false) {
+            if (videoPeer) {
+                videoPeer.destroy();
+                videoPeer = null;
+            }
+            if (localVideoStream) {
+                localVideoStream.getTracks().forEach(track => track.stop());
+                localVideoStream = null;
+            }
+            if (unsubscribeVideoRoom) {
+                unsubscribeVideoRoom();
+                unsubscribeVideoRoom = null;
+            }
+            if (unsubscribeVideoCandidates) {
+                unsubscribeVideoCandidates();
+                unsubscribeVideoCandidates = null;
+            }
+
+            if (isRoomCreator && currentRoomId && userInitiated) {
+                try {
+                    const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+                    await roomRef.delete();
+                } catch (error) {
+                    console.error("Erro ao apagar a sala:", error);
+                }
+            }
+            
+            // Sai do modo PiP se estiver ativo
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+            }
+
+            currentRoomId = null;
+            remoteVideo.srcObject = null;
+            roomInput.value = '';
+            isRoomCreator = false;
+
+            menu.style.display = 'flex';
+            app.style.display = 'none';
+
+            btnCreateRoom.disabled = false;
+            btnCreateRoom.textContent = 'Create New Room';
+            btnJoinRoom.disabled = false;
+            btnJoinRoom.textContent = 'Entrar';
+            btnStartShare.disabled = false;
+            btnStartShare.textContent = 'Compartilhar Tela';
+            videoPlaceholder.style.display = 'block';
+            remoteVideo.classList.add('hidden');
+            pipButton.style.display = 'none';
+
+            // Limpa o chat também
+            chatMessages.innerHTML = '';
+            chatInput.value = '';
+            if (unsubscribeChat) {
+                unsubscribeChat();
+                unsubscribeChat = null;
+            }
+        }
+
+        /**
+         * Encerra todas as conexões e limpa o estado.
+         */
+        async function hangUp(userInitiated = false) {
+            stopVideoChat(userInitiated);
+            stopVoiceChat();
+        }
+
+        // --- HANDLERS DE EVENTOS ---
+        
+        btnCreateRoom.onclick = async () => {
+            if (!userId) {
+                showModal('Autenticando... Por favor, aguarde.');
+                return;
+            }
+
+            btnCreateRoom.disabled = true;
+            btnCreateRoom.textContent = 'Criando...';
+            currentRoomId = generateRoomCode();
+            roomCodeDisplay.textContent = currentRoomId;
+            isRoomCreator = true;
+
+            const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+            await roomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+
+            menu.style.display = 'none';
+            app.style.display = 'flex';
+            setupChatListener();
+            
+            btnCreateRoom.textContent = 'Create New Room';
+            btnCreateRoom.disabled = false;
+        };
+
+        btnJoinRoom.onclick = async () => {
+            if (!userId) {
+                showModal('Autenticando... Por favor, aguarde.');
+                return;
+            }
+
+            const code = roomInput.value.trim().toUpperCase();
+            if (!code || code.length !== 4) {
+                showModal('Por favor, insira um código válido de 4 letras.');
+                return;
+            }
+
+            btnJoinRoom.disabled = true;
+            btnJoinRoom.textContent = 'Entrando...';
+            currentRoomId = code;
+            roomCodeDisplay.textContent = currentRoomId;
+            isRoomCreator = false;
+
+            const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+            const roomSnapshot = await roomRef.get();
+
+            if (!roomSnapshot.exists) {
+                showModal(`A sala "${currentRoomId}" não foi encontrada.`);
+                btnJoinRoom.disabled = false;
+                btnJoinRoom.textContent = 'Entrar';
+                return;
+            }
+
+            videoPeer = new SimplePeer({ initiator: false, trickle: true });
+            videoPeer.on('signal', async data => {
+                const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+                if (data.type === 'answer') {
+                    await roomRef.update({ answer: data });
+                } else if (data.candidate) {
+                    const calleeCandidates = roomRef.collection('calleeCandidates');
+                    await calleeCandidates.add(data);
+                }
+            });
+
+            videoPeer.on('stream', stream => {
+                videoPlaceholder.style.display = 'none';
+                remoteVideo.classList.remove('hidden');
+                remoteVideo.srcObject = stream;
+                remoteVideo.muted = false;
+                remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
+                pipButton.style.display = 'block';
+            });
+
+            videoPeer.on('connect', () => {
+                showMessage('Amigo conectado!', null, true);
+            });
+            
+            videoPeer.on('close', () => {
+                showMessage('Amigo desconectado.', null, true);
+                hangUp();
+            });
+
+            videoPeer.on('error', err => {
+                showModal('Erro na conexão de vídeo: ' + err.message);
+                hangUp();
+            });
+            
+            const callerCandidates = roomRef.collection('callerCandidates');
+            unsubscribeVideoCandidates = callerCandidates.onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        if (videoPeer) {
+                            videoPeer.signal(change.doc.data());
+                        }
+                    }
+                });
+            });
+
+            unsubscribeVideoRoom = roomRef.onSnapshot(async snapshot => {
+                const roomData = snapshot.data();
+                if (roomData && roomData.offer && videoPeer && !videoPeer.remoteDescription) {
+                    videoPeer.signal(roomData.offer);
+                    if (unsubscribeVideoRoom) {
+                        unsubscribeVideoRoom();
+                        unsubscribeVideoRoom = null;
+                    }
+                }
+            });
+
+            menu.style.display = 'none';
+            app.style.display = 'flex';
+            setupChatListener();
+            btnJoinRoom.disabled = false;
+            btnJoinRoom.textContent = 'Entrar';
+        };
+
+        btnStartShare.onclick = async () => {
+            if (!currentRoomId) {
+                showModal('Por favor, crie uma sala antes de compartilhar a tela.');
+                return;
+            }
+            if (isRoomCreator && videoPeer) {
+                showModal('Você já está compartilhando a tela.');
+                return;
+            }
+
+            try {
+                localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
+                remoteVideo.srcObject = localVideoStream;
+                remoteVideo.muted = false;
+                remoteVideo.classList.remove('hidden');
+                videoPlaceholder.style.display = 'none';
+                pipButton.style.display = 'block';
+
+                videoPeer = new SimplePeer({ initiator: true, trickle: true, stream: localVideoStream });
+
+                const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+                const callerCandidates = roomRef.collection('callerCandidates');
+
+                videoPeer.on('signal', async data => {
+                    if (data.type === 'offer') {
+                        await roomRef.set({
+                            offer: data,
+                            creatorId: userId,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+
+                        unsubscribeVideoRoom = roomRef.onSnapshot(snapshot => {
+                            const data = snapshot.data();
+                            if (data && data.answer) {
+                                if (videoPeer && data.answer.type === 'answer') {
+                                    videoPeer.signal(data.answer);
+                                }
+                            }
+                        });
+                    } else if (data.candidate) {
+                        await callerCandidates.add(data);
+                    }
+                });
+
+                const calleeCandidates = roomRef.collection('calleeCandidates');
+                unsubscribeVideoCandidates = calleeCandidates.onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            if (videoPeer) {
+                                videoPeer.signal(change.doc.data());
+                            }
+                        }
+                    });
+                });
+
+                videoPeer.on('connect', () => {
+                    showMessage('Amigo conectado!', null, true);
+                });
+                
+                videoPeer.on('stream', stream => {
+                    console.log('Stream remoto recebido pelo host, ignorando.');
+                });
+                
+                videoPeer.on('close', () => {
+                    showMessage('Amigo desconectado.', null, true);
+                    hangUp();
+                });
+
+                videoPeer.on('error', err => {
+                    showModal('Erro na conexão de vídeo: ' + err.message);
+                    hangUp();
+                });
+                
+                localVideoStream.getVideoTracks()[0].onended = () => {
+                    showMessage('Compartilhamento de tela encerrado.', null, true);
+                    hangUp();
+                };
+
+                btnStartShare.disabled = true;
+                btnStartShare.textContent = 'Compartilhando...';
+            } catch (err) {
+                console.error("Erro ao compartilhar tela:", err);
+                showModal('Permissão para compartilhar a tela negada ou ocorreu um erro.');
+            }
+        };
+
+        sendChatBtn.onclick = async () => {
+            const text = chatInput.value.trim();
+            if (!text || !currentRoomId) return;
+            
+            showMessage(text, 'Você');
+            chatInput.value = '';
+
+            try {
+                const chatRef = db.collection('movie-rooms').doc(currentRoomId).collection('chat');
+                await chatRef.add({
+                    text,
+                    senderId: userId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (e) {
+                showMessage('Falha ao enviar a mensagem.', null, true);
+                console.error("Erro ao enviar mensagem de chat:", e);
+            }
+        };
+
+        chatInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatBtn.click();
+            }
+        });
+
+        function setupChatListener() {
+            if (unsubscribeChat) unsubscribeChat();
+            const chatRef = db.collection('movie-rooms').doc(currentRoomId).collection('chat').orderBy('timestamp');
+            unsubscribeChat = chatRef.onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const data = change.doc.data();
+                        if (data.senderId !== userId) {
+                            showMessage(data.text, 'Amigo');
+                        }
+                    }
+                });
+            });
+        }
+
+        btnLeaveRoom.onclick = () => {
+            hangUp(true);
+        };
+
+        window.addEventListener('beforeunload', () => {
+            if (isRoomCreator && currentRoomId) {
+                db.collection('movie-rooms').doc(currentRoomId).delete()
+                    .then(() => console.log("Sala apagada ao descarregar a página (criador)."))
+                    .catch(e => console.error("Erro ao apagar sala ao descarregar:", e));
+            }
+        });
+
+        // Novo handler para o botão de Picture-in-Picture
+        pipButton.onclick = () => {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled) {
+                remoteVideo.requestPictureInPicture()
+                    .catch(e => console.error("Erro ao entrar no modo PiP:", e));
+            } else {
+                showModal('Seu navegador não suporta Picture-in-Picture.');
+            }
+        };
+
+        window.onload = () => {
+            btnCreateRoom.disabled = true;
+            btnJoinRoom.disabled = true;
+        };
+
+        // --- LÓGICA DO VOICE CHAT ---
+        
+        // Alterna entre a visualização de chat de texto e voice chat
+        toggleChatMode.onclick = () => {
+            if (textChatView.classList.contains('hidden')) {
+                // Alterna para o chat de texto
+                textChatView.classList.remove('hidden');
+                voiceChatView.classList.add('hidden');
+                toggleChatMode.innerHTML = `<i class="fas fa-microphone"></i>`;
+                stopVoiceChat();
+            } else {
+                // Alterna para o voice chat
+                voiceChatView.classList.remove('hidden');
+                textChatView.classList.add('hidden');
+                toggleChatMode.innerHTML = `<i class="fas fa-comment-dots"></i>`;
+            }
+        };
+
+        btnJoinVoiceChat.onclick = startVoiceChat;
+
+        async function startVoiceChat() {
+            if (!currentRoomId) {
+                showModal('Por favor, entre ou crie uma sala primeiro.');
+                return;
+            }
+
+            // Desabilita o botão para evitar cliques múltiplos
+            btnJoinVoiceChat.disabled = true;
+            voiceStatusText.textContent = 'Conectando...';
+            voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-green-500');
+            voiceStatusIndicator.classList.add('bg-red-500');
+
+            try {
+                // Tenta obter o stream de áudio
+                localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                const voiceRoomRef = db.collection('voice-rooms').doc(currentRoomId);
+                const voiceRoomSnapshot = await voiceRoomRef.get();
+                isVoiceHost = !voiceRoomSnapshot.exists;
+
+                if (isVoiceHost) {
+                    // Se a sala de voz não existe, você é o host
+                    await voiceRoomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    voicePeer = new SimplePeer({ initiator: true, trickle: true, stream: localAudioStream });
+                    
+                    voicePeer.on('signal', async data => {
+                        if (data.type === 'offer') {
+                            await voiceRoomRef.set({ offer: data }, { merge: true });
+                            unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(snapshot => {
+                                const voiceData = snapshot.data();
+                                if (voiceData && voiceData.answer) {
+                                    if (voicePeer && voiceData.answer.type === 'answer') {
+                                        voicePeer.signal(voiceData.answer);
+                                    }
+                                }
+                            });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('callerCandidates').add(data);
+                        }
+                    });
+
+                } else {
+                    // Se a sala de voz existe, você é o convidado
+                    voicePeer = new SimplePeer({ initiator: false, trickle: true, stream: localAudioStream });
+                    
+                    voicePeer.on('signal', async data => {
+                        if (data.type === 'answer') {
+                            await voiceRoomRef.update({ answer: data });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('calleeCandidates').add(data);
+                        }
+                    });
+
+                    unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(async snapshot => {
+                        const voiceData = snapshot.data();
+                        if (voiceData && voiceData.offer && voicePeer && !voicePeer.remoteDescription) {
+                            voicePeer.signal(voiceData.offer);
+                        }
+                    });
+                }
+                
+                // Configura os listeners para ambos os hosts e convidados
+                const remoteAudio = new Audio();
+                voicePeer.on('stream', stream => {
+                    remoteAudio.srcObject = stream;
+                    remoteAudio.play();
+                    remoteVoiceStatus.textContent = 'Amigo conectado!';
+                });
+
+                voicePeer.on('connect', () => {
+                    voiceStatusText.textContent = 'Conectado!';
+                    voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-red-500');
+                    voiceStatusIndicator.classList.add('bg-green-500');
+                    showMessage('Você entrou no voice chat.', null, true);
+                    btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
+                    btnJoinVoiceChat.onclick = stopVoiceChat; // Troca o handler do botão
+                    btnJoinVoiceChat.disabled = false;
+                });
+
+                voicePeer.on('close', () => {
+                    showMessage('Voice chat encerrado.', null, true);
+                    stopVoiceChat();
+                });
+
+                voicePeer.on('error', err => {
+                    showModal('Erro na conexão de voz: ' + err.message);
+                    console.error("Erro no voice chat:", err);
+                    stopVoiceChat();
+                });
+
+                // Listening for candidates
+                const candidatesCollection = isVoiceHost ? 'calleeCandidates' : 'callerCandidates';
+                unsubscribeVoiceCandidates = voiceRoomRef.collection(candidatesCollection).onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added' && voicePeer) {
+                            voicePeer.signal(change.doc.data());
+                        }
+                    });
+                });
+
+            } catch (err) {
+                // Em caso de erro, limpa o estado e reabilita o botão.
+                showModal('Não foi possível acessar o microfone. Verifique as permissões do seu navegador.');
+                console.error("Erro ao iniciar voice chat:", err);
+                stopVoiceChat();
+                btnJoinVoiceChat.disabled = false;
             }
         };
     </script>
