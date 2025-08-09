@@ -3,10 +3,13 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Movie Room with Chat</title>
+    <title>Movie Room with Voice Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <!-- Inclui Font Awesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Estilos base para a fonte e o tema */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #111827;
@@ -19,18 +22,17 @@
             padding: 1rem;
         }
 
+        /* Estilos para a área de chat */
         #chatMessages {
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
-            padding: 0.5rem;
+            padding: 0.75rem;
             background: #1f2937;
             border-radius: 0.5rem;
+            flex-grow: 1;
         }
 
-        #chatMessages div {
-            margin-bottom: 0.5rem;
-        }
-
+        /* Estilo para as mensagens do sistema */
         .system-msg {
             text-align: center;
             font-style: italic;
@@ -50,13 +52,67 @@
         .btn-primary:hover {
             background-color: #4338ca;
         }
+
+        /* Classes de estilo para a área de vídeo e tela */
+        .movie-screen-container {
+            position: relative;
+            background: #0f172a;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+        }
+
+        .movie-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 1.5rem;
+        }
+
+        .pip-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 10;
+            background-color: rgba(31, 41, 55, 0.7);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .pip-button:hover {
+            background-color: rgba(79, 70, 229, 0.9);
+        }
+
+        .chat-toggle-button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s;
+        }
+
+        .chat-toggle-button:hover {
+            background-color: #4338ca;
+        }
+
+        .chat-status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
 
-    <div id="container" class="max-w-xl w-full p-6 bg-gray-900 rounded-xl shadow-lg flex flex-col">
+    <div id="container" class="max-w-7xl w-full p-6 bg-gray-900 rounded-xl shadow-lg flex flex-col">
 
-        <!-- UI do Menu -->
+        <!-- UI do Menu (Não alterada) -->
         <div id="menu" class="flex flex-col items-center">
             <h1 class="text-3xl font-bold mb-2">Movie Room</h1>
             <p class="mb-6 text-gray-400">Crie uma sala para assistir com amigos</p>
@@ -71,28 +127,79 @@
             <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
         </div>
 
-        <!-- UI da Aplicação -->
+        <!-- UI da Aplicação (Layout alterado) -->
         <div id="app" class="hidden flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
-                <button id="btnLeaveRoom" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition">Sair da Sala</button>
+            <!-- Barra superior com o código da sala e botões de controle -->
+            <div class="flex justify-between items-center mb-6 px-4">
+                <h2 class="text-2xl font-bold">Sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
+                <div class="flex gap-4">
+                    <!-- Botão para alternar entre chat de texto e voice chat -->
+                    <button id="toggleChatMode" class="chat-toggle-button" title="Alternar modo de chat">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button id="btnLeaveRoom" class="bg-red-600 text-white px-4 py-2 rounded-full hover:bg-red-700 transition">Sair</button>
+                </div>
             </div>
 
-            <!-- Vídeo principal que exibe o stream local (host) ou remoto (cliente) -->
-            <video id="remoteVideo" autoplay playsinline controls class="w-full h-64 bg-black rounded mb-4"></video>
+            <!-- Conteúdo principal: Layout em duas colunas para desktop -->
+            <div class="md:grid md:grid-cols-3 md:gap-8 flex-grow">
 
-            <!-- Placeholder enquanto espera o stream -->
-            <div id="videoPlaceholder" class="text-center text-gray-400 mb-4">
-                <p>Esperando o host compartilhar a tela...</p>
-                <button id="btnStartShare" class="mt-3 btn-primary">Compartilhar Tela</button>
-            </div>
+                <!-- Coluna da Esquerda: Reprodutor de Vídeo -->
+                <div class="col-span-2 flex flex-col items-center">
+                    <!-- Falsa "Tela" para dar um toque de cinema -->
+                    <div class="w-full text-center text-gray-300 italic mb-4">
+                        <p class="text-xl">Tela de Projeção</p>
+                    </div>
 
-            <!-- Área de chat -->
-            <div id="chatMessages" class="mb-3"></div>
+                    <!-- Contêiner do vídeo com aspect ratio 16:9 -->
+                    <div class="movie-screen-container w-full">
+                        <!-- Botão Picture-in-Picture -->
+                        <button id="pipButton" class="pip-button" style="display: none;" title="Picture-in-Picture">
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                        <!-- Vídeo principal que exibe o stream local (host) ou remoto (cliente) -->
+                        <video id="remoteVideo" autoplay playsinline controls class="movie-screen hidden"></video>
+                        <!-- Placeholder enquanto espera o stream -->
+                        <div id="videoPlaceholder" class="movie-screen flex items-center justify-center text-center text-gray-400 p-8">
+                            <div>
+                                <p class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
+                                <button id="btnStartShare" class="mt-3 btn-primary px-8">Compartilhar Tela</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="flex gap-2">
-                <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-2 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                <button id="sendChatBtn" class="btn-primary">Enviar</button>
+                <!-- Coluna da Direita: Área de Chat -->
+                <div class="col-span-1 flex flex-col mt-8 md:mt-0">
+                    <h3 class="text-xl font-semibold mb-3 text-center">Chat da Sala</h3>
+                    
+                    <!-- View de chat de texto -->
+                    <div id="textChatView">
+                        <div id="chatMessages" class="mb-3"></div>
+                        <div class="flex gap-2">
+                            <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-2 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                            <button id="sendChatBtn" class="btn-primary">Enviar</button>
+                        </div>
+                    </div>
+
+                    <!-- View de voice chat -->
+                    <div id="voiceChatView" class="hidden flex-col items-center justify-center p-4 h-full">
+                        <div class="flex items-center gap-2 mb-4">
+                            <span id="voiceStatusIndicator" class="chat-status-indicator bg-gray-500"></span>
+                            <span id="voiceStatusText" class="text-lg">Não conectado</span>
+                        </div>
+                        <div id="voiceChatControls" class="flex flex-col gap-4 w-full text-center">
+                            <p class="text-sm text-gray-400">Entre para conversar por voz com os outros participantes.</p>
+                            <button id="btnJoinVoiceChat" class="w-full py-3 btn-primary">
+                                Entrar no Voice Chat
+                            </button>
+                            <div id="voiceChatActiveInfo" class="hidden flex flex-col items-center gap-2">
+                                <p class="font-semibold text-green-400">Você está no voice chat!</p>
+                                <p id="remoteVoiceStatus" class="text-sm text-gray-400">Aguardando outro(s) participante(s)...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -129,21 +236,37 @@
         const remoteVideo = document.getElementById('remoteVideo');
         const videoPlaceholder = document.getElementById('videoPlaceholder');
         const btnStartShare = document.getElementById('btnStartShare');
+        const pipButton = document.getElementById('pipButton');
+
+        // Chat UI elements
+        const toggleChatMode = document.getElementById('toggleChatMode');
+        const textChatView = document.getElementById('textChatView');
+        const voiceChatView = document.getElementById('voiceChatView');
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const sendChatBtn = document.getElementById('sendChatBtn');
+        const btnJoinVoiceChat = document.getElementById('btnJoinVoiceChat');
+        const voiceStatusText = document.getElementById('voiceStatusText');
+        const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
+        const voiceChatActiveInfo = document.getElementById('voiceChatActiveInfo');
+        const remoteVoiceStatus = document.getElementById('remoteVoiceStatus');
 
         // Variáveis de estado
         let userId = null;
         let currentRoomId = null;
-        let peer = null;
-        let localStream = null;
+        let videoPeer = null;
+        let voicePeer = null;
+        let localVideoStream = null;
+        let localAudioStream = null;
         let isRoomCreator = false;
+        let isVoiceHost = false;
 
         // Listeners de Firestore para desinscrição
-        let unsubscribeRoom = null;
+        let unsubscribeVideoRoom = null;
+        let unsubscribeVideoCandidates = null;
+        let unsubscribeVoiceRoom = null;
+        let unsubscribeVoiceCandidates = null;
         let unsubscribeChat = null;
-        let unsubscribeCandidates = null;
         
         // Função para exibir um modal customizado em vez de um `alert()`
         function showModal(message) {
@@ -208,28 +331,53 @@
         // --- FUNÇÕES DE CONEXÃO E LIMPEZA ---
         
         /**
-         * Encerra a conexão e limpa o estado.
+         * Encerra a conexão de voice chat e limpa o estado.
          */
-        async function hangUp(userInitiated = false) {
-            if (peer) {
-                peer.destroy();
-                peer = null;
+        function stopVoiceChat() {
+            if (voicePeer) {
+                voicePeer.destroy();
+                voicePeer = null;
             }
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(track => track.stop());
+                localAudioStream = null;
             }
-            if (unsubscribeRoom) {
-                unsubscribeRoom();
-                unsubscribeRoom = null;
+            if (unsubscribeVoiceRoom) {
+                unsubscribeVoiceRoom();
+                unsubscribeVoiceRoom = null;
             }
-            if (unsubscribeChat) {
-                unsubscribeChat();
-                unsubscribeChat = null;
+            if (unsubscribeVoiceCandidates) {
+                unsubscribeVoiceCandidates();
+                unsubscribeVoiceCandidates = null;
             }
-            if (unsubscribeCandidates) {
-                unsubscribeCandidates();
-                unsubscribeCandidates = null;
+            isVoiceHost = false;
+            btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
+            voiceStatusText.textContent = 'Não conectado';
+            voiceStatusIndicator.classList.remove('bg-green-500', 'bg-red-500');
+            voiceStatusIndicator.classList.add('bg-gray-500');
+            voiceChatActiveInfo.classList.add('hidden');
+            showMessage('Você saiu do voice chat.', null, true);
+        }
+
+        /**
+         * Encerra a conexão de vídeo e limpa o estado.
+         */
+        async function stopVideoChat(userInitiated = false) {
+            if (videoPeer) {
+                videoPeer.destroy();
+                videoPeer = null;
+            }
+            if (localVideoStream) {
+                localVideoStream.getTracks().forEach(track => track.stop());
+                localVideoStream = null;
+            }
+            if (unsubscribeVideoRoom) {
+                unsubscribeVideoRoom();
+                unsubscribeVideoRoom = null;
+            }
+            if (unsubscribeVideoCandidates) {
+                unsubscribeVideoCandidates();
+                unsubscribeVideoCandidates = null;
             }
 
             if (isRoomCreator && currentRoomId && userInitiated) {
@@ -240,11 +388,14 @@
                     console.error("Erro ao apagar a sala:", error);
                 }
             }
+            
+            // Sai do modo PiP se estiver ativo
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+            }
 
             currentRoomId = null;
             remoteVideo.srcObject = null;
-            chatMessages.innerHTML = '';
-            chatInput.value = '';
             roomInput.value = '';
             isRoomCreator = false;
 
@@ -258,6 +409,24 @@
             btnStartShare.disabled = false;
             btnStartShare.textContent = 'Compartilhar Tela';
             videoPlaceholder.style.display = 'block';
+            remoteVideo.classList.add('hidden');
+            pipButton.style.display = 'none';
+
+            // Limpa o chat também
+            chatMessages.innerHTML = '';
+            chatInput.value = '';
+            if (unsubscribeChat) {
+                unsubscribeChat();
+                unsubscribeChat = null;
+            }
+        }
+
+        /**
+         * Encerra todas as conexões e limpa o estado.
+         */
+        async function hangUp(userInitiated = false) {
+            stopVideoChat(userInitiated);
+            stopVoiceChat();
         }
 
         // --- HANDLERS DE EVENTOS ---
@@ -313,10 +482,8 @@
                 return;
             }
 
-            // --- INÍCIO DA CORREÇÃO DE SINCRONIZAÇÃO (GUEST) ---
-            peer = new SimplePeer({ initiator: false, trickle: true });
-
-            peer.on('signal', async data => {
+            videoPeer = new SimplePeer({ initiator: false, trickle: true });
+            videoPeer.on('signal', async data => {
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
                 if (data.type === 'answer') {
                     await roomRef.update({ answer: data });
@@ -326,51 +493,50 @@
                 }
             });
 
-            peer.on('stream', stream => {
+            videoPeer.on('stream', stream => {
                 videoPlaceholder.style.display = 'none';
+                remoteVideo.classList.remove('hidden');
                 remoteVideo.srcObject = stream;
                 remoteVideo.muted = false;
                 remoteVideo.play().catch(e => console.error("Erro ao reproduzir o vídeo remoto:", e));
+                pipButton.style.display = 'block';
             });
 
-            peer.on('connect', () => {
+            videoPeer.on('connect', () => {
                 showMessage('Amigo conectado!', null, true);
             });
             
-            peer.on('close', () => {
+            videoPeer.on('close', () => {
                 showMessage('Amigo desconectado.', null, true);
                 hangUp();
             });
 
-            peer.on('error', err => {
-                showModal('Erro na conexão: ' + err.message);
+            videoPeer.on('error', err => {
+                showModal('Erro na conexão de vídeo: ' + err.message);
                 hangUp();
             });
             
             const callerCandidates = roomRef.collection('callerCandidates');
-            unsubscribeCandidates = callerCandidates.onSnapshot(snapshot => {
+            unsubscribeVideoCandidates = callerCandidates.onSnapshot(snapshot => {
                 snapshot.docChanges().forEach(change => {
                     if (change.type === 'added') {
-                        if (peer) {
-                            peer.signal(change.doc.data());
+                        if (videoPeer) {
+                            videoPeer.signal(change.doc.data());
                         }
                     }
                 });
             });
 
-            // Ouve a oferta do host, e se o peer ainda não tiver uma descrição remota, sinaliza a oferta.
-            // O ouvinte se auto-desativa depois de receber e processar a oferta.
-            unsubscribeRoom = roomRef.onSnapshot(async snapshot => {
+            unsubscribeVideoRoom = roomRef.onSnapshot(async snapshot => {
                 const roomData = snapshot.data();
-                if (roomData && roomData.offer && peer && !peer.remoteDescription) {
-                    peer.signal(roomData.offer);
-                    if (unsubscribeRoom) {
-                        unsubscribeRoom();
-                        unsubscribeRoom = null;
+                if (roomData && roomData.offer && videoPeer && !videoPeer.remoteDescription) {
+                    videoPeer.signal(roomData.offer);
+                    if (unsubscribeVideoRoom) {
+                        unsubscribeVideoRoom();
+                        unsubscribeVideoRoom = null;
                     }
                 }
             });
-            // --- FIM DA CORREÇÃO DE SINCRONIZAÇÃO (GUEST) ---
 
             menu.style.display = 'none';
             app.style.display = 'flex';
@@ -384,39 +550,38 @@
                 showModal('Por favor, crie uma sala antes de compartilhar a tela.');
                 return;
             }
-            if (isRoomCreator && peer) {
+            if (isRoomCreator && videoPeer) {
                 showModal('Você já está compartilhando a tela.');
                 return;
             }
 
             try {
-                localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-                remoteVideo.srcObject = localStream;
-                remoteVideo.muted = false; 
+                remoteVideo.srcObject = localVideoStream;
+                remoteVideo.muted = false;
+                remoteVideo.classList.remove('hidden');
                 videoPlaceholder.style.display = 'none';
+                pipButton.style.display = 'block';
 
-                peer = new SimplePeer({ initiator: true, trickle: true, stream: localStream });
+                videoPeer = new SimplePeer({ initiator: true, trickle: true, stream: localVideoStream });
 
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
                 const callerCandidates = roomRef.collection('callerCandidates');
 
-                // --- INÍCIO DA CORREÇÃO DE SINCRONIZAÇÃO (HOST) ---
-                peer.on('signal', async data => {
+                videoPeer.on('signal', async data => {
                     if (data.type === 'offer') {
-                        // Salva a oferta no Firestore
                         await roomRef.set({
                             offer: data,
                             creatorId: userId,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         }, { merge: true });
 
-                        // AGORA, e SOMENTE AGORA, começa a ouvir a resposta do convidado
-                        unsubscribeRoom = roomRef.onSnapshot(snapshot => {
+                        unsubscribeVideoRoom = roomRef.onSnapshot(snapshot => {
                             const data = snapshot.data();
                             if (data && data.answer) {
-                                if (peer && data.answer.type === 'answer') {
-                                    peer.signal(data.answer);
+                                if (videoPeer && data.answer.type === 'answer') {
+                                    videoPeer.signal(data.answer);
                                 }
                             }
                         });
@@ -424,38 +589,37 @@
                         await callerCandidates.add(data);
                     }
                 });
-                // --- FIM DA CORREÇÃO DE SINCRONIZAÇÃO (HOST) ---
 
                 const calleeCandidates = roomRef.collection('calleeCandidates');
-                unsubscribeCandidates = calleeCandidates.onSnapshot(snapshot => {
+                unsubscribeVideoCandidates = calleeCandidates.onSnapshot(snapshot => {
                     snapshot.docChanges().forEach(change => {
                         if (change.type === 'added') {
-                            if (peer) {
-                                peer.signal(change.doc.data());
+                            if (videoPeer) {
+                                videoPeer.signal(change.doc.data());
                             }
                         }
                     });
                 });
 
-                peer.on('connect', () => {
+                videoPeer.on('connect', () => {
                     showMessage('Amigo conectado!', null, true);
                 });
                 
-                peer.on('stream', stream => {
+                videoPeer.on('stream', stream => {
                     console.log('Stream remoto recebido pelo host, ignorando.');
                 });
                 
-                peer.on('close', () => {
+                videoPeer.on('close', () => {
                     showMessage('Amigo desconectado.', null, true);
                     hangUp();
                 });
 
-                peer.on('error', err => {
-                    showModal('Erro na conexão: ' + err.message);
+                videoPeer.on('error', err => {
+                    showModal('Erro na conexão de vídeo: ' + err.message);
                     hangUp();
                 });
                 
-                localStream.getVideoTracks()[0].onended = () => {
+                localVideoStream.getVideoTracks()[0].onended = () => {
                     showMessage('Compartilhamento de tela encerrado.', null, true);
                     hangUp();
                 };
@@ -522,9 +686,147 @@
             }
         });
 
+        // Novo handler para o botão de Picture-in-Picture
+        pipButton.onclick = () => {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled) {
+                remoteVideo.requestPictureInPicture()
+                    .catch(e => console.error("Erro ao entrar no modo PiP:", e));
+            } else {
+                showModal('Seu navegador não suporta Picture-in-Picture.');
+            }
+        };
+
         window.onload = () => {
             btnCreateRoom.disabled = true;
             btnJoinRoom.disabled = true;
+        };
+
+        // --- LÓGICA DO VOICE CHAT ---
+        
+        // Alterna entre a visualização de chat de texto e voice chat
+        toggleChatMode.onclick = () => {
+            if (textChatView.classList.contains('hidden')) {
+                // Alterna para o chat de texto
+                textChatView.classList.remove('hidden');
+                voiceChatView.classList.add('hidden');
+                toggleChatMode.innerHTML = `<i class="fas fa-microphone"></i>`;
+                stopVoiceChat();
+            } else {
+                // Alterna para o voice chat
+                voiceChatView.classList.remove('hidden');
+                textChatView.classList.add('hidden');
+                toggleChatMode.innerHTML = `<i class="fas fa-comment-dots"></i>`;
+                // Se já estiver em uma sala, prepara o voice chat
+                if (currentRoomId) {
+                    // A UI já mostra o botão para entrar no voice chat
+                }
+            }
+        };
+
+        btnJoinVoiceChat.onclick = async () => {
+            if (!currentRoomId) {
+                showModal('Por favor, entre ou crie uma sala primeiro.');
+                return;
+            }
+
+            try {
+                localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                const voiceRoomRef = db.collection('voice-rooms').doc(currentRoomId);
+                const voiceRoomSnapshot = await voiceRoomRef.get();
+                isVoiceHost = !voiceRoomSnapshot.exists;
+
+                if (isVoiceHost) {
+                    // Se a sala de voz não existe, você é o host
+                    await voiceRoomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    peer = new SimplePeer({ initiator: true, trickle: true, stream: localAudioStream });
+                    
+                    peer.on('signal', async data => {
+                        if (data.type === 'offer') {
+                            await voiceRoomRef.set({ offer: data }, { merge: true });
+                            unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(snapshot => {
+                                const voiceData = snapshot.data();
+                                if (voiceData && voiceData.answer) {
+                                    if (peer && voiceData.answer.type === 'answer') {
+                                        peer.signal(voiceData.answer);
+                                    }
+                                }
+                            });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('callerCandidates').add(data);
+                        }
+                    });
+
+                } else {
+                    // Se a sala de voz existe, você é o convidado
+                    peer = new SimplePeer({ initiator: false, trickle: true, stream: localAudioStream });
+                    
+                    peer.on('signal', async data => {
+                        if (data.type === 'answer') {
+                            await voiceRoomRef.update({ answer: data });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('calleeCandidates').add(data);
+                        }
+                    });
+
+                    unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(async snapshot => {
+                        const voiceData = snapshot.data();
+                        if (voiceData && voiceData.offer && peer && !peer.remoteDescription) {
+                            peer.signal(voiceData.offer);
+                        }
+                    });
+                }
+                
+                // Configura os listeners para ambos os hosts e convidados
+                const remoteAudio = new Audio();
+                peer.on('stream', stream => {
+                    remoteAudio.srcObject = stream;
+                    remoteAudio.play();
+                    remoteVoiceStatus.textContent = 'Amigo conectado!';
+                });
+
+                peer.on('connect', () => {
+                    voiceStatusText.textContent = 'Conectado!';
+                    voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-red-500');
+                    voiceStatusIndicator.classList.add('bg-green-500');
+                    showMessage('Você entrou no voice chat.', null, true);
+                    btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
+                    btnJoinVoiceChat.onclick = stopVoiceChat;
+                });
+
+                peer.on('close', () => {
+                    showMessage('Voice chat encerrado.', null, true);
+                    stopVoiceChat();
+                });
+
+                peer.on('error', err => {
+                    showModal('Erro na conexão de voz: ' + err.message);
+                    console.error("Erro no voice chat:", err);
+                    stopVoiceChat();
+                });
+
+                // Listening for candidates
+                const candidatesCollection = isVoiceHost ? 'calleeCandidates' : 'callerCandidates';
+                unsubscribeVoiceCandidates = voiceRoomRef.collection(candidatesCollection).onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added' && peer) {
+                            peer.signal(change.doc.data());
+                        }
+                    });
+                });
+                
+                voiceStatusText.textContent = 'Conectando...';
+                voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-green-500');
+                voiceStatusIndicator.classList.add('bg-red-500');
+                btnJoinVoiceChat.disabled = true;
+
+            } catch (err) {
+                showModal('Não foi possível acessar o microfone. Verifique as permissões do seu navegador.');
+                console.error("Erro ao iniciar voice chat:", err);
+                stopVoiceChat();
+            }
         };
     </script>
 </body>
