@@ -162,7 +162,7 @@
                         <!-- Placeholder enquanto espera o stream -->
                         <div id="videoPlaceholder" class="movie-screen flex items-center justify-center text-center text-gray-400 p-8">
                             <div>
-                                <p class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
+                                <p id="videoPlaceholderText" class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
                                 <button id="btnStartShare" class="mt-3 btn-primary px-8">Compartilhar Tela</button>
                             </div>
                         </div>
@@ -189,13 +189,15 @@
                             <span id="voiceStatusText" class="text-lg">Não conectado</span>
                         </div>
                         <div id="voiceChatControls" class="flex flex-col gap-4 w-full text-center">
-                            <p class="text-sm text-gray-400">Entre para conversar por voz com os outros participantes.</p>
+                            <p id="voiceChatInfo" class="text-sm text-gray-400">Entre para conversar por voz com os outros participantes.</p>
                             <button id="btnJoinVoiceChat" class="w-full py-3 btn-primary">
                                 Entrar no Voice Chat
                             </button>
                             <div id="voiceChatActiveInfo" class="hidden flex flex-col items-center gap-2">
-                                <p class="font-semibold text-green-400">Você está no voice chat!</p>
                                 <p id="remoteVoiceStatus" class="text-sm text-gray-400">Aguardando outro(s) participante(s)...</p>
+                                <button id="btnToggleMute" class="bg-gray-700 text-white px-4 py-2 rounded-full hover:bg-gray-600 transition">
+                                    <i class="fas fa-microphone"></i> Silenciar
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -237,6 +239,7 @@
         const videoPlaceholder = document.getElementById('videoPlaceholder');
         const btnStartShare = document.getElementById('btnStartShare');
         const pipButton = document.getElementById('pipButton');
+        const videoPlaceholderText = document.getElementById('videoPlaceholderText');
 
         // Chat UI elements
         const toggleChatMode = document.getElementById('toggleChatMode');
@@ -250,6 +253,8 @@
         const voiceStatusIndicator = document.getElementById('voiceStatusIndicator');
         const voiceChatActiveInfo = document.getElementById('voiceChatActiveInfo');
         const remoteVoiceStatus = document.getElementById('remoteVoiceStatus');
+        const voiceChatInfo = document.getElementById('voiceChatInfo');
+        const btnToggleMute = document.getElementById('btnToggleMute');
 
         // Variáveis de estado
         let userId = null;
@@ -357,6 +362,7 @@
             voiceStatusIndicator.classList.remove('bg-green-500', 'bg-red-500');
             voiceStatusIndicator.classList.add('bg-gray-500');
             voiceChatActiveInfo.classList.add('hidden');
+            voiceChatInfo.classList.remove('hidden');
             showMessage('Você saiu do voice chat.', null, true);
         }
 
@@ -410,6 +416,7 @@
             btnStartShare.disabled = false;
             btnStartShare.textContent = 'Compartilhar Tela';
             videoPlaceholder.style.display = 'block';
+            videoPlaceholderText.textContent = 'Esperando o host compartilhar a tela...';
             remoteVideo.classList.add('hidden');
             pipButton.style.display = 'none';
 
@@ -559,12 +566,9 @@
             try {
                 localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-                remoteVideo.srcObject = localVideoStream;
-                remoteVideo.muted = false;
-                remoteVideo.classList.remove('hidden');
-                videoPlaceholder.style.display = 'none';
-                pipButton.style.display = 'block';
-
+                // Altera o texto do placeholder para indicar que o compartilhamento começou
+                videoPlaceholderText.textContent = 'Você está compartilhando sua tela...';
+                
                 videoPeer = new SimplePeer({ initiator: true, trickle: true, stream: localVideoStream });
 
                 const roomRef = db.collection('movie-rooms').doc(currentRoomId);
@@ -607,6 +611,7 @@
                 });
                 
                 videoPeer.on('stream', stream => {
+                    // O host não deve receber um stream dele mesmo
                     console.log('Stream remoto recebido pelo host, ignorando.');
                 });
                 
@@ -723,6 +728,7 @@
         };
 
         btnJoinVoiceChat.onclick = startVoiceChat;
+        btnToggleMute.onclick = toggleMute;
 
         async function startVoiceChat() {
             if (!currentRoomId) {
@@ -735,9 +741,10 @@
             voiceStatusText.textContent = 'Conectando...';
             voiceStatusIndicator.classList.remove('bg-gray-500', 'bg-green-500');
             voiceStatusIndicator.classList.add('bg-red-500');
-
+            voiceChatInfo.classList.add('hidden');
+            
             try {
-                // Tenta obter o stream de áudio
+                // Tenta obter o stream de áudio primeiro
                 localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
                 const voiceRoomRef = db.collection('voice-rooms').doc(currentRoomId);
@@ -745,47 +752,13 @@
                 isVoiceHost = !voiceRoomSnapshot.exists;
 
                 if (isVoiceHost) {
-                    // Se a sala de voz não existe, você é o host
                     await voiceRoomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
                     voicePeer = new SimplePeer({ initiator: true, trickle: true, stream: localAudioStream });
-                    
-                    voicePeer.on('signal', async data => {
-                        if (data.type === 'offer') {
-                            await voiceRoomRef.set({ offer: data }, { merge: true });
-                            unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(snapshot => {
-                                const voiceData = snapshot.data();
-                                if (voiceData && voiceData.answer) {
-                                    if (voicePeer && voiceData.answer.type === 'answer') {
-                                        voicePeer.signal(voiceData.answer);
-                                    }
-                                }
-                            });
-                        } else if (data.candidate) {
-                            await voiceRoomRef.collection('callerCandidates').add(data);
-                        }
-                    });
-
                 } else {
-                    // Se a sala de voz existe, você é o convidado
                     voicePeer = new SimplePeer({ initiator: false, trickle: true, stream: localAudioStream });
-                    
-                    voicePeer.on('signal', async data => {
-                        if (data.type === 'answer') {
-                            await voiceRoomRef.update({ answer: data });
-                        } else if (data.candidate) {
-                            await voiceRoomRef.collection('calleeCandidates').add(data);
-                        }
-                    });
-
-                    unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(async snapshot => {
-                        const voiceData = snapshot.data();
-                        if (voiceData && voiceData.offer && voicePeer && !voicePeer.remoteDescription) {
-                            voicePeer.signal(voiceData.offer);
-                        }
-                    });
                 }
                 
-                // Configura os listeners para ambos os hosts e convidados
+                // Configura os listeners de peer para ambos os hosts e convidados
                 const remoteAudio = new Audio();
                 voicePeer.on('stream', stream => {
                     remoteAudio.srcObject = stream;
@@ -799,8 +772,9 @@
                     voiceStatusIndicator.classList.add('bg-green-500');
                     showMessage('Você entrou no voice chat.', null, true);
                     btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
-                    btnJoinVoiceChat.onclick = stopVoiceChat; // Troca o handler do botão
+                    btnJoinVoiceChat.onclick = stopVoiceChat;
                     btnJoinVoiceChat.disabled = false;
+                    voiceChatActiveInfo.classList.remove('hidden');
                 });
 
                 voicePeer.on('close', () => {
@@ -814,7 +788,25 @@
                     stopVoiceChat();
                 });
 
-                // Listening for candidates
+                // Lógica de sinalização Firestore
+                const onSignalHandler = async data => {
+                    if (isVoiceHost) {
+                        if (data.type === 'offer') {
+                            await voiceRoomRef.set({ offer: data }, { merge: true });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('callerCandidates').add(data);
+                        }
+                    } else {
+                        if (data.type === 'answer') {
+                            await voiceRoomRef.update({ answer: data });
+                        } else if (data.candidate) {
+                            await voiceRoomRef.collection('calleeCandidates').add(data);
+                        }
+                    }
+                };
+                
+                voicePeer.on('signal', onSignalHandler);
+
                 const candidatesCollection = isVoiceHost ? 'calleeCandidates' : 'callerCandidates';
                 unsubscribeVoiceCandidates = voiceRoomRef.collection(candidatesCollection).onSnapshot(snapshot => {
                     snapshot.docChanges().forEach(change => {
@@ -823,6 +815,19 @@
                         }
                     });
                 });
+                
+                unsubscribeVoiceRoom = voiceRoomRef.onSnapshot(async snapshot => {
+                    const voiceData = snapshot.data();
+                    if (isVoiceHost) {
+                        if (voiceData && voiceData.answer && voicePeer && !voicePeer.remoteDescription) {
+                             voicePeer.signal(voiceData.answer);
+                        }
+                    } else {
+                         if (voiceData && voiceData.offer && voicePeer && !voicePeer.remoteDescription) {
+                            voicePeer.signal(voiceData.offer);
+                        }
+                    }
+                });
 
             } catch (err) {
                 // Em caso de erro, limpa o estado e reabilita o botão.
@@ -830,8 +835,25 @@
                 console.error("Erro ao iniciar voice chat:", err);
                 stopVoiceChat();
                 btnJoinVoiceChat.disabled = false;
+                voiceChatInfo.classList.remove('hidden');
             }
         };
+        
+        /**
+         * Alterna o estado do áudio (silenciar/ativar).
+         */
+        function toggleMute() {
+            if (!localAudioStream) return;
+            const audioTrack = localAudioStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                if (audioTrack.enabled) {
+                    btnToggleMute.innerHTML = `<i class="fas fa-microphone"></i> Silenciar`;
+                } else {
+                    btnToggleMute.innerHTML = `<i class="fas fa-microphone-slash"></i> Ativado`;
+                }
+            }
+        }
     </script>
 </body>
 </html>
