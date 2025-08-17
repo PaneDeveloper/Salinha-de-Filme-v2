@@ -1,14 +1,21 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Movie Room</title>
-    <script src="https://cdn.jsdelivr.net/npm/core-js-bundle@3.37.1/minified.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <!-- Simple Peer -->
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
@@ -23,7 +30,6 @@
             align-items: center;
             min-height: 100vh;
         }
-
         #container {
             width: 100%;
             max-width: 1200px;
@@ -33,7 +39,6 @@
             border-radius: 1.5rem;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
-
         #chatMessages {
             max-height: 250px;
             overflow-y: auto;
@@ -43,249 +48,80 @@
             flex-grow: 1;
             border: 1px solid #374151;
         }
-
-        .system-msg {
-            text-align: center;
-            font-style: italic;
-            color: #9ca3af;
-        }
-
-        .ai-msg {
-            background-color: #374151;
-            padding: 0.75rem;
-            border-radius: 0.75rem;
-            margin-bottom: 0.5rem;
-            font-size: 0.9rem;
-            line-height: 1.4;
-        }
-
-        .btn-primary {
-            background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
-            color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.75rem;
-            font-weight: bold;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(90deg, #4f46e5 0%, #4338ca 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
-        }
-
-        .movie-screen-container {
-            position: relative;
-            background: #000000;
-            border-radius: 1.5rem;
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
-            padding-top: 56.25%; /* 16:9 Aspect Ratio */
-            border: 4px solid #374151;
-        }
-
-        .movie-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 1.25rem;
-        }
-
-        .pip-button {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            z-index: 10;
-            background-color: rgba(31, 41, 55, 0.7);
-            color: white;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            transition: background-color 0.3s;
-        }
-
-        .pip-button:hover {
-            background-color: rgba(79, 70, 229, 0.9);
-        }
-
-        .chat-toggle-button {
-            background: #374151;
-            color: #d1d5db;
-            padding: 0.75rem 1rem;
-            border-radius: 0.75rem;
-            transition: all 0.3s ease;
-        }
-
-        .chat-toggle-button:hover {
-            background: #4b5563;
-        }
-
-        .chat-status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 100;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.4);
-            backdrop-filter: blur(5px);
-        }
-
-        .modal-content {
-            background-color: #1f2937;
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid #4b5563;
-            width: 90%;
-            max-width: 400px;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        }
-
-        .modal-large-content {
-            background-color: #1f2937;
-            margin: 5% auto;
-            padding: 24px;
-            border: 1px solid #4b5563;
-            width: 90%;
-            max-width: 600px;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        }
-
-        .close-modal {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            transition: color 0.3s;
-        }
-
-        .close-modal:hover,
-        .close-modal:focus {
-            color: #fff;
-            text-decoration: none;
-            cursor: pointer;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-        }
-
-        .ai-loading-spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .loading-animation {
-            display: inline-flex;
-            align-items: center;
-        }
-
-        .loading-dot {
-            width: 8px;
-            height: 8px;
-            background-color: #9ca3af;
-            border-radius: 50%;
-            margin: 0 2px;
-            animation: pulse 1.4s infinite ease-in-out both;
-        }
-
+        .system-msg { text-align: center; font-style: italic; color: #9ca3af; margin: 8px 0; }
+        .ai-msg { background-color: #374151; padding: 0.75rem; border-radius: 0.75rem; margin-top: 0.5rem; font-size: 0.9rem; line-height: 1.4; }
+        .ai-msg p, .ai-msg ol, .ai-msg ul { margin-bottom: 0.5rem; }
+        .ai-msg li { margin-left: 1.5rem; }
+        .btn-primary { background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%); transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .btn-primary:hover { background: linear-gradient(90deg, #4f46e5 0%, #4338ca 100%); transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2); }
+        .movie-screen-container { position: relative; background: #000000; border-radius: 1.5rem; box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5); padding-top: 56.25%; /* 16:9 Aspect Ratio */ border: 4px solid #374151; }
+        .movie-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 1.25rem; }
+        .pip-button { position: absolute; top: 1rem; right: 1rem; z-index: 10; background-color: rgba(31, 41, 55, 0.7); transition: background-color 0.3s; color: white; padding: 0.5rem 0.75rem; border-radius: 0.5rem; }
+        .pip-button:hover { background-color: rgba(79, 70, 229, 0.9); }
+        .chat-toggle-button { background: #374151; color: #d1d5db; padding: 0.75rem 1rem; border-radius: 0.75rem; transition: all 0.3s ease; }
+        .chat-toggle-button:hover { background: #4b5563; }
+        .chat-status-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(5px); }
+        .modal-content { background-color: #1f2937; margin: 15% auto; padding: 20px; border: 1px solid #4b5563; width: 90%; max-width: 400px; border-radius: 0.75rem; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .modal-large-content { background-color: #1f2937; margin: 5% auto; padding: 24px; border: 1px solid #4b5563; width: 90%; max-width: 600px; border-radius: 0.75rem; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; transition: color 0.3s; }
+        .close-modal:hover, .close-modal:focus { color: #fff; text-decoration: none; cursor: pointer; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .loading-dot { width: 8px; height: 8px; background-color: #9ca3af; border-radius: 50%; margin: 0 2px; animation: pulse 1.4s infinite ease-in-out both; }
         .loading-dot:nth-child(1) { animation-delay: -0.32s; }
         .loading-dot:nth-child(2) { animation-delay: -0.16s; }
-
         @media (min-width: 768px) {
-            #main-content {
-                flex-direction: row;
-            }
-
-            #chat-sidebar {
-                flex: 1;
-            }
-            #player-container {
-                flex: 2;
-            }
-
-            #chatMessages {
-                max-height: none;
-            }
+            #main-content { flex-direction: row; }
+            #chat-sidebar { flex: 1; }
+            #player-container { flex: 2; }
+            #chatMessages { max-height: none; }
         }
     </style>
 </head>
 <body>
-
     <div id="container">
-
         <!-- UI do Menu -->
         <div id="menu" class="w-full flex flex-col items-center p-4">
             <h1 class="text-3xl font-bold mb-2 text-indigo-400">Movie Room</h1>
             <p class="mb-6 text-gray-400">Crie uma sala para assistir com amigos</p>
-
             <input id="usernameInput" placeholder="Seu nome de usuário aqui :3" class="w-full p-4 mb-4 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
-            <button id="btnCreateRoom" class="w-full py-4 mb-4 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">Create New Room</button>
-
+            <button id="btnCreateRoom" class="w-full py-4 mb-4 btn-primary text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Criar Nova Sala</button>
             <div class="flex gap-2 mb-4 w-full">
                 <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-4 rounded-lg bg-gray-700 text-white uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
                 <button id="btnJoinRoom" class="py-4 px-6 bg-gray-600 rounded-lg text-white font-bold hover:bg-gray-500 transition">Entrar</button>
             </div>
-
             <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
         </div>
-
         <!-- UI da Aplicação -->
         <div id="app" class="hidden flex-col w-full gap-6">
-
             <div id="main-content" class="flex flex-col md:flex-row gap-6">
-
                 <!-- Player e código da sala (lado esquerdo) -->
                 <div id="player-container" class="flex-1 flex flex-col items-start gap-4">
                     <div class="flex items-center gap-4 px-4 py-2 bg-gray-700 rounded-xl w-full md:w-auto">
                         <h2 class="text-lg font-bold">Código da sala: <span id="roomCodeDisplay" class="text-indigo-400"></span></h2>
                     </div>
-
                     <div class="w-full text-center text-gray-300 italic mb-4">
                         <p id="videoScreenTitle" class="text-xl">Tela de Projeção</p>
                     </div>
-
                     <div class="movie-screen-container w-full">
                         <button id="pipButton" class="pip-button" style="display: none;" title="Picture-in-Picture">
                             <i class="fas fa-external-link-alt"></i>
                         </button>
-                        <video id="remoteVideo" autoplay playsinline controls class="movie-screen hidden"></video>
+                        <video id="remoteVideo" autoplay playsinline class="movie-screen hidden"></video>
                         <div id="videoPlaceholder" class="movie-screen flex flex-col items-center justify-center text-center text-gray-400 p-8">
                             <div class="p-8 bg-gray-800 rounded-xl">
                                 <p id="videoPlaceholderText" class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
-                                <button id="btnStartShare" class="mt-3 btn-primary px-8 disabled:opacity-50 disabled:cursor-not-allowed">Compartilhar Tela</button>
+                                <div id="hostControls">
+                                    <button id="btnStartShare" class="mt-3 btn-primary px-8 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Compartilhar Tela</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-
                 <!-- Chat e Controles (lado direito) -->
                 <div id="chat-sidebar" class="flex-1 flex flex-col gap-4">
                     <div class="flex flex-col md:flex-row justify-between items-center px-4 gap-4">
-                         <div class="flex gap-2">
+                        <div class="flex gap-2">
                             <button id="btnShowParticipants" class="chat-toggle-button" title="Ver Participantes">
                                 <i class="fas fa-users"></i>
                             </button>
@@ -295,20 +131,18 @@
                             <button id="btnLeaveRoom" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Sair</button>
                         </div>
                     </div>
-
                     <div id="textChatView" class="flex flex-col gap-4 h-full">
                         <h3 class="text-xl font-semibold text-center">Chat da Sala</h3>
                         <div id="ai-features" class="flex flex-col gap-2">
-                            <button id="btnGenerateInvitation" class="btn-primary w-full text-left disabled:opacity-50 disabled:cursor-not-allowed">Gerar Convite ✨</button>
-                            <button id="btnGenerateIcebreakers" class="btn-primary w-full text-left disabled:opacity-50 disabled:cursor-not-allowed">Sugestões de Conversa ✨</button>
+                            <button id="btnGenerateInvitation" class="btn-primary w-full text-left text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Gerar Convite ✨</button>
+                            <button id="btnGenerateIcebreakers" class="btn-primary w-full text-left text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Sugestões de Conversa ✨</button>
                         </div>
                         <div id="chatMessages"></div>
                         <div class="flex gap-2 mt-auto">
-                            <input id="chatInput" placeholder="Digite sua mensagem... (@Gemini para IA)" class="flex-grow p-3 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
-                            <button id="sendChatBtn" class="btn-primary px-4 py-2">Enviar</button>
+                            <input id="chatInput" placeholder="Digite sua mensagem..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
+                            <button id="sendChatBtn" class="btn-primary px-4 py-2 text-white font-bold">Enviar</button>
                         </div>
                     </div>
-
                     <div id="voiceChatView" class="hidden flex-col items-center justify-center p-4 h-full">
                         <h3 class="text-xl font-semibold mb-3 text-center">Voice Chat</h3>
                         <div class="flex items-center gap-2 mb-4">
@@ -317,7 +151,7 @@
                         </div>
                         <div id="voiceChatControls" class="flex flex-col gap-4 w-full text-center">
                             <p id="voiceChatInfo" class="text-sm text-gray-400">Entre para conversar por voz com os outros participantes.</p>
-                            <button id="btnJoinVoiceChat" class="w-full py-3 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button id="btnJoinVoiceChat" class="w-full py-3 btn-primary text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">
                                 Entrar no Voice Chat
                             </button>
                             <div id="voiceChatActiveInfo" class="hidden flex flex-col items-center gap-2">
@@ -332,7 +166,6 @@
             </div>
         </div>
     </div>
-
     <!-- Modal de Participantes -->
     <div id="participantsModal" class="modal">
         <div class="modal-content">
@@ -342,7 +175,6 @@
             </ul>
         </div>
     </div>
-
     <!-- Modal para o Convite -->
     <div id="invitationModal" class="modal">
         <div class="modal-large-content">
@@ -350,15 +182,10 @@
             <h3 class="text-xl font-bold mb-4">Seu Convite ✨</h3>
             <pre id="invitationText" class="bg-gray-800 p-4 rounded-lg text-sm whitespace-pre-wrap border border-gray-700"></pre>
             <div class="flex justify-end mt-4">
-                <button id="copyInvitationBtn" class="btn-primary">Copiar</button>
+                <button id="copyInvitationBtn" class="btn-primary text-white font-bold">Copiar</button>
             </div>
         </div>
     </div>
-
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-firestore.js"></script>
 
     <script>
         // === FIREBASE CONFIGURATION ===
@@ -366,7 +193,7 @@
             apiKey: "AIzaSyA3HIqR4rT3NANEulauFy_-3OkuWOqYhqk",
             authDomain: "salinha-de-filme.firebaseapp.com",
             projectId: "salinha-de-filme",
-            storageBucket: "salinha-de-filme.firebasestorage.app",
+            storageBucket: "salinha-de-filme.appspot.com",
             messagingSenderId: "589071044223",
             appId: "1:589071044223:web:2e8c6e0b4644bc99fbf94a"
         };
@@ -390,7 +217,7 @@
         const btnStartShare = document.getElementById('btnStartShare');
         const pipButton = document.getElementById('pipButton');
         const videoPlaceholderText = document.getElementById('videoPlaceholderText');
-        const videoScreenTitle = document.getElementById('videoScreenTitle');
+        const hostControls = document.getElementById('hostControls');
 
         const toggleChatMode = document.getElementById('toggleChatMode');
         const textChatView = document.getElementById('textChatView');
@@ -419,34 +246,27 @@
         let userId = null;
         let currentRoomId = null;
         let username = null;
-        let videoPeer = null;
+        let isRoomCreator = false;
         let localVideoStream = null;
         let localAudioStream = null;
-        let isRoomCreator = false;
-        let myIpAddress = null;
+        
+        // State for video and voice connections
+        let videoPeer = null; // For participants
+        let videoPeers = new Map(); // For host
+        let voicePeers = new Map();
 
-        // Map para armazenar as conexões de voz com cada participante
-        let voicePeerConnections = new Map();
-        let voiceSignalUnsubscribers = new Map();
-        let voiceCandidateUnsubscribers = new Map();
-        let voiceRoomListenerUnsubscribe = null;
-
-        let unsubscribeVideoRoom = null;
-        let unsubscribeVideoCandidates = null;
-        let unsubscribeChat = null;
-        let unsubscribeParticipants = null;
-        let unsubscribeKicked = null;
+        // Firestore unsubscribers
+        let unsubscribers = [];
 
         // === INITIALIZATION AND HELPER FUNCTIONS ===
-
-        function showModal(message) {
+        function showCustomModal(message) {
             const modal = document.createElement('div');
-            modal.classList.add('fixed', 'inset-0', 'flex', 'items-center', 'justify-center', 'bg-black', 'bg-opacity-75', 'z-50');
+            modal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-75 z-50 p-4';
             modal.innerHTML = `
-              <div class="bg-gray-800 p-6 rounded-lg shadow-xl text-white max-w-sm w-full text-center">
-                <p class="mb-4">${message}</p>
-                <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 btn-primary hover:bg-indigo-700 transition">OK</button>
-              </div>
+                <div class="bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
+                    <p class="text-white mb-4">${message}</p>
+                    <button onclick="this.closest('.fixed').remove()" class="px-6 py-2 btn-primary rounded-lg">OK</button>
+                </div>
             `;
             document.body.appendChild(modal);
         }
@@ -460,504 +280,331 @@
                 const markdown = marked.parse(text);
                 div.innerHTML = `<strong>✨ Gemini:</strong><div class="ai-msg">${markdown}</div>`;
             } else {
-                div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+                div.innerHTML = `<strong class="text-indigo-300">${sender}:</strong> ${text}`;
             }
             chatMessages.appendChild(div);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        auth.onAuthStateChanged(function(user) {
+        auth.onAuthStateChanged(user => {
             if (user) {
                 userId = user.uid;
                 authStatus.textContent = 'Conectado com sucesso!';
                 btnCreateRoom.disabled = false;
                 btnJoinRoom.disabled = false;
             } else {
-                userId = null;
-                authStatus.textContent = 'Autenticando...';
-                btnCreateRoom.disabled = true;
-                btnJoinRoom.disabled = true;
-                if (!auth.currentUser) {
-                    auth.signInAnonymously().catch(function(err) {
-                        authStatus.textContent = 'Não foi possível conectar aos serviços: ' + err.message;
-                        console.error("Erro na autenticação anônima:", err);
-                    });
-                }
+                auth.signInAnonymously().catch(err => {
+                    authStatus.textContent = 'Falha na autenticação: ' + err.message;
+                });
             }
         });
-
+        
         function generateRoomCode() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            let code = '';
-            for (let i = 0; i < 4; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return code;
+            return Math.random().toString(36).substring(2, 6).toUpperCase();
         }
 
         function checkWebRTCSupport() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 const message = "Seu navegador não suporta WebRTC, então o compartilhamento de tela e o chat de voz não funcionarão.";
-                videoPlaceholderText.textContent = message;
-                showModal(message);
-                btnStartShare.disabled = true;
-                btnStartShare.textContent = 'Navegador não suportado';
-                btnJoinVoiceChat.disabled = true;
-                btnJoinVoiceChat.textContent = 'Navegador não suportado';
+                showCustomModal(message);
                 return false;
             }
             return true;
         }
-
-        function getIpAddress() {
-            return new Promise(function(resolve) {
-                const pc = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
-                pc.createDataChannel('');
-                pc.createOffer()
-                    .then(function(offer) { pc.setLocalDescription(offer); })
-                    .catch(function(err) {
-                        console.error('Failed to create offer:', err);
-                        resolve(null);
-                    });
-                pc.onicecandidate = function(event) {
-                    if (event && event.candidate && event.candidate.candidate) {
-                        const candidate = event.candidate.candidate;
-                        const match = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(candidate);
-                        if (match) {
-                            pc.onicecandidate = null;
-                            resolve(match[1]);
-                        }
-                    }
-                };
-                setTimeout(function() {
-                    if (!pc.onicecandidate) {
-                        resolve(null);
-                    }
-                    pc.close();
-                }, 1000);
-            });
+        
+        function cleanupListeners() {
+            unsubscribers.forEach(unsub => unsub());
+            unsubscribers = [];
         }
 
+        // === ROOM MANAGEMENT ===
+        async function createRoom() {
+            username = usernameInput.value.trim();
+            if (!userId || !username) {
+                showCustomModal('Por favor, insira um nome de usuário.');
+                return;
+            }
+            if (!checkWebRTCSupport()) return;
 
-        function joinRoomAsParticipant(roomId) {
-            if (!userId || !username) return Promise.resolve(false);
-
-            return new Promise(function(resolve, reject) {
-                getIpAddress().then(function(ip) {
-                    myIpAddress = ip;
-                    const roomRef = db.collection('movie-rooms').doc(roomId);
-                    roomRef.get().then(function(roomSnapshot) {
-                        const roomData = roomSnapshot.data();
-
-                        if (roomData && roomData.bannedIps && myIpAddress && roomData.bannedIps.includes(myIpAddress)) {
-                            showModal('Você foi banido desta sala por violar as regras.');
-                            resolve(false);
-                            return;
-                        }
-
-                        const participantsRef = roomRef.collection('participants');
-                        participantsRef.doc(userId).get().then(function(participantDoc) {
-                            if (participantDoc.exists && participantDoc.data().kicked) {
-                                showModal('Você foi removido desta sala e não pode mais entrar.');
-                                resolve(false);
-                                return;
-                            }
-
-                            participantsRef.doc(userId).set({
-                                id: userId,
-                                username: username,
-                                ip: myIpAddress,
-                                joinedAt: firebase.firestore.FieldValue.serverTimestamp()
-                            }).then(function() {
-                                unsubscribeKicked = participantsRef.doc(userId).onSnapshot(function(doc) {
-                                    const data = doc.data();
-                                    if (data && data.kicked) {
-                                        showModal("Você foi removido da sala pelo administrador.");
-                                        hangUp(false);
-                                    }
-                                });
-
-                                menu.style.display = 'none';
-                                app.style.display = 'flex';
-                                setupChatListener();
-                                setupParticipantsListener();
-                                resolve(true);
-                            }).catch(function(e) {
-                                console.error("Erro ao adicionar participante:", e);
-                                showModal('Falha ao entrar na sala. Por favor, tente novamente.');
-                                hangUp();
-                                resolve(false);
-                            });
-                        });
-                    }).catch(function(e) {
-                        console.error("Erro ao obter dados da sala:", e);
-                        showModal('Falha ao entrar na sala. Por favor, tente novamente.');
-                        hangUp();
-                        resolve(false);
-                    });
-                });
-            });
-        }
-
-        function leaveRoomAsParticipant(roomId) {
-            if (!userId || !roomId) return Promise.resolve();
-            return new Promise(function(resolve, reject) {
-                const participantsRef = db.collection('movie-rooms').doc(roomId).collection('participants');
-                participantsRef.doc(userId).delete().then(function() {
-                    if(unsubscribeKicked) {
-                        unsubscribeKicked();
-                        unsubscribeKicked = null;
-                    }
-                    resolve();
-                }).catch(function(e) {
-                    console.error("Erro ao remover participante:", e);
-                    resolve(); // Resolve anyway to continue leaving process.
-                });
-            });
-        }
-
-        function kickParticipant(participantId, banIp) {
-            if (!isRoomCreator) return;
+            btnCreateRoom.disabled = true;
+            btnCreateRoom.textContent = 'Criando...';
+            
+            isRoomCreator = true;
+            currentRoomId = generateRoomCode();
+            
             const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-            const participantRef = roomRef.collection('participants').doc(participantId);
-
-            participantRef.get().then(function(participantDoc) {
-                const participantData = participantDoc.data();
-                if (!participantData) return;
-
-                participantRef.set({ kicked: true }, { merge: true }).then(function() {
-                    if (banIp && participantData.ip) {
-                        roomRef.get().then(function(roomSnapshot) {
-                            const roomData = roomSnapshot.data() || {};
-                            const bannedIps = roomData.bannedIps || [];
-                            if (!bannedIps.includes(participantData.ip)) {
-                                bannedIps.push(participantData.ip);
-                                roomRef.update({ bannedIps: bannedIps }).then(function() {
-                                    showMessage(`O usuário "${participantData.username}" foi banido por IP da sala.`, null, true);
-                                });
-                            }
-                        });
-                    }
-                    showMessage(`O usuário "${participantData.username}" foi expulso.`, null, true);
+            try {
+                await roomRef.set({ 
+                    creatorId: userId, 
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    isBroadcasting: false
                 });
-            }).catch(function(e) {
-                console.error("Erro ao remover participante:", e);
-            });
+                await joinRoom(currentRoomId);
+            } catch (e) {
+                console.error("Error creating room:", e);
+                showCustomModal('Falha ao criar a sala. Tente novamente.');
+                isRoomCreator = false;
+                currentRoomId = null;
+            } finally {
+                btnCreateRoom.disabled = false;
+                btnCreateRoom.textContent = 'Criar Nova Sala';
+            }
         }
 
-        function stopVoiceChat() {
-            // Fecha todas as conexões de peer de voz
-            voicePeerConnections.forEach(peer => peer.destroy());
-            voicePeerConnections.clear();
-
-            // Limpa todos os listeners do Firestore para voz
-            voiceSignalUnsubscribers.forEach(unsub => unsub());
-            voiceSignalUnsubscribers.clear();
-            voiceCandidateUnsubscribers.forEach(unsub => unsub());
-            voiceCandidateUnsubscribers.clear();
-            if (voiceRoomListenerUnsubscribe) {
-                voiceRoomListenerUnsubscribe();
-                voiceRoomListenerUnsubscribe = null;
+        async function joinRoom(code) {
+            if (!code) { // Called from button click
+                username = usernameInput.value.trim();
+                code = roomInput.value.trim().toUpperCase();
+                if (!userId || !username) return showCustomModal('Por favor, insira um nome de usuário.');
+                if (!code) return showCustomModal('Por favor, insira um código de sala válido.');
+                if (!checkWebRTCSupport()) return;
+                btnJoinRoom.disabled = true;
+                btnJoinRoom.textContent = 'Entrando...';
             }
 
-            // Para a stream de áudio local
+            const roomRef = db.collection('movie-rooms').doc(code);
+            const roomSnapshot = await roomRef.get();
+
+            if (!roomSnapshot.exists) {
+                showCustomModal(`A sala "${code}" não foi encontrada.`);
+                btnJoinRoom.disabled = false;
+                btnJoinRoom.textContent = 'Entrar';
+                return;
+            }
+
+            currentRoomId = code;
+            const roomData = roomSnapshot.data();
+            if (roomData.creatorId === userId) {
+                isRoomCreator = true;
+            }
+
+            await roomRef.collection('participants').doc(userId).set({
+                username: username,
+                joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            menu.style.display = 'none';
+            app.style.display = 'flex';
+            roomCodeDisplay.textContent = currentRoomId;
+            hostControls.style.display = isRoomCreator ? 'block' : 'none';
+            
+            setupRoomListeners();
+            
+            if (!isRoomCreator) {
+                videoPlaceholderText.textContent = roomData.isBroadcasting ? 'Conectando ao stream...' : 'Esperando o host compartilhar a tela...';
+            } else {
+                videoPlaceholderText.textContent = 'Clique em "Compartilhar Tela" para iniciar.';
+            }
+
+            btnJoinRoom.disabled = false;
+            btnJoinRoom.textContent = 'Entrar';
+        }
+
+        async function leaveRoom(userInitiated = true) {
+            if (!currentRoomId) return;
+
+            // Clean up video connections
+            if (isRoomCreator) {
+                videoPeers.forEach(p => p.destroy());
+                videoPeers.clear();
+                if (localVideoStream) {
+                    localVideoStream.getTracks().forEach(track => track.stop());
+                    localVideoStream = null;
+                }
+                if (userInitiated) {
+                     await db.collection('movie-rooms').doc(currentRoomId).delete();
+                }
+            } else {
+                if (videoPeer) videoPeer.destroy();
+                videoPeer = null;
+            }
+            
+            // Clean up voice connections
+            voicePeers.forEach(p => p.destroy());
+            voicePeers.clear();
             if (localAudioStream) {
                 localAudioStream.getTracks().forEach(track => track.stop());
                 localAudioStream = null;
             }
 
-            // Remove a entrada do usuário na coleção de voz do Firestore
-            if (currentRoomId && userId) {
-                 db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').doc(userId).delete().catch(e => console.error("Error deleting voice-call entry:", e));
+            if (userInitiated) {
+                 await db.collection('movie-rooms').doc(currentRoomId).collection('participants').doc(userId).delete();
             }
 
-            updateVoiceUI(false);
-            showMessage('Você saiu do voice chat.', null, true);
-        }
-
-        function stopVideoChat(userInitiated) {
-            return new Promise(function(resolve, reject) {
-                if (videoPeer) {
-                    videoPeer.destroy();
-                    videoPeer = null;
-                }
-                if (localVideoStream) {
-                    localVideoStream.getTracks().forEach(function(track) { track.stop(); });
-                    localVideoStream = null;
-                }
-                if (unsubscribeVideoRoom) {
-                    unsubscribeVideoRoom();
-                    unsubscribeVideoRoom = null;
-                }
-                if (unsubscribeVideoCandidates) {
-                    unsubscribeVideoCandidates();
-                    unsubscribeVideoCandidates = null;
-                }
-
-                leaveRoomAsParticipant(currentRoomId).then(function() {
-                    if (isRoomCreator && currentRoomId && userInitiated) {
-                        const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-                        roomRef.delete().catch(function(error) {
-                            console.error("Error deleting room:", error);
-                        });
-                    }
-
-                    if (document.pictureInPictureElement) {
-                        document.exitPictureInPicture();
-                    }
-
-                    currentRoomId = null;
-                    remoteVideo.srcObject = null;
-                    roomInput.value = '';
-                    isRoomCreator = false;
-
-                    menu.style.display = 'flex';
-                    app.style.display = 'none';
-
-                    btnCreateRoom.disabled = false;
-                    btnCreateRoom.textContent = 'Create New Room';
-                    btnJoinRoom.disabled = false;
-                    btnJoinRoom.textContent = 'Entrar';
-                    btnStartShare.disabled = false;
-                    btnStartShare.textContent = 'Compartilhar Tela';
-                    videoPlaceholder.style.display = 'flex';
-                    videoPlaceholderText.textContent = 'Esperando o host compartilhar a tela...';
-                    remoteVideo.classList.add('hidden');
-                    pipButton.style.display = 'none';
-
-                    btnGenerateInvitation.disabled = true;
-                    btnGenerateIcebreakers.disabled = true;
-                    btnJoinVoiceChat.disabled = true;
-
-                    chatMessages.innerHTML = '';
-                    chatInput.value = '';
-                    if (unsubscribeChat) {
-                        unsubscribeChat();
-                        unsubscribeChat = null;
-                    }
-                    if (unsubscribeParticipants) {
-                        unsubscribeParticipants();
-                        unsubscribeParticipants = null;
-                    }
-                    resolve();
-                });
-            });
-        }
-
-        function hangUp(userInitiated) {
-            stopVideoChat(userInitiated).then(function() {
-                stopVoiceChat();
-            });
-        }
-
-        // --- EVENT HANDLERS ---
-
-        btnCreateRoom.onclick = function() {
-            username = usernameInput.value.trim();
-            if (!userId || !username) {
-                showModal('Por favor, insira um nome de usuário.');
-                return;
-            }
-
-            if (!checkWebRTCSupport()) return;
-
-            btnCreateRoom.disabled = true;
-            btnCreateRoom.textContent = 'Criando...';
-            currentRoomId = generateRoomCode();
-            roomCodeDisplay.textContent = currentRoomId;
-            isRoomCreator = true;
-
-            const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-            roomRef.set({ creatorId: userId, createdAt: firebase.firestore.FieldValue.serverTimestamp(), bannedIps: [] }, { merge: true }).then(function() {
-                joinRoomAsParticipant(currentRoomId).then(function(joined) {
-                    if (!joined) {
-                        btnCreateRoom.disabled = false;
-                        btnCreateRoom.textContent = 'Create New Room';
-                        return;
-                    }
-                    videoScreenTitle.textContent = "Projetor";
-                    btnGenerateInvitation.disabled = false;
-                    btnGenerateIcebreakers.disabled = false;
-                    btnJoinVoiceChat.disabled = false;
-                    btnCreateRoom.textContent = 'Create New Room';
-                    btnCreateRoom.disabled = false;
-                });
-            }).catch(function(e) {
-                console.error("Error creating room:", e);
-                showModal('Falha ao criar a sala. Tente novamente.');
-                btnCreateRoom.disabled = false;
-                btnCreateRoom.textContent = 'Create New Room';
-            });
-        };
-
-        btnJoinRoom.onclick = function() {
-            username = usernameInput.value.trim();
-            if (!userId || !username) {
-                showModal('Por favor, insira um nome de usuário.');
-                return;
-            }
-
-            if (!checkWebRTCSupport()) return;
-
-            const code = roomInput.value.trim().toUpperCase();
-            if (!code || code.length !== 4) {
-                showModal('Por favor, insira um código válido de 4 letras.');
-                return;
-            }
-
-            btnJoinRoom.disabled = true;
-            btnJoinRoom.textContent = 'Entrando...';
-            currentRoomId = code;
-            roomCodeDisplay.textContent = currentRoomId;
+            cleanupListeners();
+            
+            currentRoomId = null;
             isRoomCreator = false;
-
-            const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-            roomRef.get().then(function(roomSnapshot) {
-                if (!roomSnapshot.exists) {
-                    showModal(`A sala "${currentRoomId}" não foi encontrada.`);
-                    btnJoinRoom.disabled = false;
-                    btnJoinRoom.textContent = 'Entrar';
-                    return;
-                }
-
-                joinRoomAsParticipant(currentRoomId).then(function(joined) {
-                    if (!joined) {
-                        btnJoinRoom.disabled = false;
-                        btnJoinRoom.textContent = 'Entrar';
-                        return;
-                    }
-
-                    const roomData = roomSnapshot.data();
-                    if (roomData && roomData.creatorId === userId) {
-                         isRoomCreator = true;
-                         videoScreenTitle.textContent = "Projetor";
-                    } else {
-                         videoScreenTitle.textContent = "Telão";
-                    }
-
-                    btnGenerateInvitation.disabled = false;
-                    btnGenerateIcebreakers.disabled = false;
-                    btnJoinVoiceChat.disabled = false;
-
-                    videoPeer = new SimplePeer({ initiator: false, trickle: true });
-                    videoPeer.on('signal', function(data) {
-                        db.collection('movie-rooms').doc(currentRoomId).collection('videoCandidates').add({
-                            senderId: userId,
-                            data: data,
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        }).catch(function(err) {
-                            console.error("Error adding video candidate:", err);
-                            showModal("Firestore permission error! Please follow Step 1 to correct the rules.");
-                        });
-                    });
-
-                    videoPeer.on('stream', function(stream) {
-                        remoteVideo.srcObject = stream;
-                        remoteVideo.classList.remove('hidden');
-                        videoPlaceholder.style.display = 'none';
-                        pipButton.style.display = 'block';
-                        showMessage(`O host começou a compartilhar a tela.`, null, true);
-                    });
-
-                    unsubscribeVideoCandidates = db.collection('movie-rooms').doc(currentRoomId).collection('videoCandidates').onSnapshot(function(snapshot) {
-                        snapshot.docChanges().forEach(function(change) {
-                            if (change.type === 'added') {
-                                const data = change.doc.data();
-                                if (data.senderId !== userId) {
-                                    videoPeer.signal(data.data);
-                                }
-                            }
-                        });
-                    });
-
-                    btnJoinRoom.disabled = false;
-                    btnJoinRoom.textContent = 'Entrar';
-                });
-            }).catch(function(e) {
-                console.error("Error getting room data:", e);
-                showModal('Falha ao entrar na sala. Tente novamente.');
-                btnJoinRoom.disabled = false;
-                btnJoinRoom.textContent = 'Entrar';
-            });
-        };
-
-        btnStartShare.onclick = function() {
-            btnStartShare.disabled = true;
-            btnStartShare.textContent = 'Compartilhando...';
-
-            if (!checkWebRTCSupport()) return;
-
-            navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(function(localStream) {
-                localVideoStream = localStream;
-                if (!localVideoStream) {
-                    showModal("Permissão de compartilhamento de tela negada.");
-                    btnStartShare.disabled = false;
-                    btnStartShare.textContent = 'Compartilhar Tela';
-                    return;
-                }
-
-                videoPeer = new SimplePeer({ initiator: true, trickle: true, stream: localVideoStream });
-
-                videoPeer.on('signal', function(data) {
-                    const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-                    roomRef.set({ creatorId: userId, offer: data }, { merge: true });
-                });
-
-                videoPeer.on('stream', function(stream) {
-                    console.log("Recebendo stream remoto como host:", stream);
-                });
-
-                unsubscribeVideoRoom = db.collection('movie-rooms').doc(currentRoomId).onSnapshot(function(doc) {
-                    const data = doc.data();
-                    if (data && data.answer) {
-                        videoPeer.signal(data.answer);
-                    }
-                });
-
-                unsubscribeVideoCandidates = db.collection('movie-rooms').doc(currentRoomId).collection('videoCandidates').onSnapshot(function(snapshot) {
-                    snapshot.docChanges().forEach(function(change) {
-                        if (change.type === 'added') {
-                            const data = change.doc.data();
-                            if (data.senderId !== userId) {
-                                videoPeer.signal(data.data);
-                            }
-                        }
-                    });
-                });
-
-                videoPlaceholder.style.display = 'none';
-                remoteVideo.srcObject = localVideoStream;
-                remoteVideo.classList.remove('hidden');
-                pipButton.style.display = 'block';
-            }).catch(function(err) {
-                console.error('Error accessing media:', err);
-                showModal('Erro ao iniciar o compartilhamento de tela. Certifique-se de que a permissão foi concedida.');
-                btnStartShare.disabled = false;
-                btnStartShare.textContent = 'Compartilhar Tela';
-            });
-        };
-
-        btnLeaveRoom.onclick = function() {
-            hangUp(true);
-        };
-
-        // --- TEXT CHAT ---
-        function setupChatListener() {
-            unsubscribeChat = db.collection('movie-rooms').doc(currentRoomId).collection('chat').orderBy('timestamp').onSnapshot(function(snapshot) {
-                snapshot.docChanges().forEach(function(change) {
-                    if (change.type === 'added') {
-                        const message = change.doc.data();
-                        if (message.senderId !== userId) {
-                            showMessage(message.text, message.username);
-                        }
-                    }
-                });
-            });
+            remoteVideo.srcObject = null;
+            remoteVideo.classList.add('hidden');
+            videoPlaceholder.style.display = 'flex';
+            pipButton.style.display = 'none';
+            
+            menu.style.display = 'flex';
+            app.style.display = 'none';
+            chatMessages.innerHTML = '';
         }
 
-        sendChatBtn.onclick = function() {
+        // === LISTENERS ===
+        function setupRoomListeners() {
+            const roomRef = db.collection('movie-rooms').doc(currentRoomId);
+
+            // General room listener (for broadcast status)
+            const unsubRoom = roomRef.onSnapshot(doc => {
+                if (!doc.exists) {
+                    showCustomModal("A sala foi fechada pelo anfitrião.");
+                    leaveRoom(false);
+                    return;
+                }
+                const roomData = doc.data();
+                if (!isRoomCreator && roomData.isBroadcasting && !videoPeer) {
+                    initiateVideoReception(roomData.creatorId);
+                }
+            });
+            unsubscribers.push(unsubRoom);
+            
+            // Participants listener
+            const unsubParticipants = roomRef.collection('participants').onSnapshot(snapshot => {
+                participantsList.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const participant = doc.data();
+                    const li = document.createElement('li');
+                    li.textContent = `${participant.username} ${doc.id === userId ? '(Você)' : ''}`;
+                    participantsList.appendChild(li);
+                });
+                // For host: manage video connections
+                if (isRoomCreator && localVideoStream) {
+                    const currentParticipants = new Set(snapshot.docs.map(d => d.id));
+                    // Add new peers
+                    currentParticipants.forEach(id => {
+                        if (id !== userId && !videoPeers.has(id)) {
+                             createVideoPeer(id, true, localVideoStream);
+                        }
+                    });
+                    // Remove old peers
+                    videoPeers.forEach((peer, id) => {
+                        if (!currentParticipants.has(id)) {
+                            peer.destroy();
+                            videoPeers.delete(id);
+                        }
+                    });
+                }
+            });
+            unsubscribers.push(unsubParticipants);
+
+            // Chat listener
+            const unsubChat = roomRef.collection('chat').orderBy('timestamp').onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const msg = change.doc.data();
+                        if (msg.senderId !== userId) {
+                            showMessage(msg.text, msg.username, msg.isSystem, msg.isAI);
+                        }
+                    }
+                });
+            });
+            unsubscribers.push(unsubChat);
+        }
+
+        // === VIDEO STREAMING (REFACTORED) ===
+        async function startVideoBroadcast() {
+            if (!isRoomCreator) return;
+            try {
+                localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                
+                remoteVideo.srcObject = localVideoStream;
+                remoteVideo.muted = true;
+                remoteVideo.classList.remove('hidden');
+                videoPlaceholder.style.display = 'none';
+                pipButton.style.display = 'block';
+                btnStartShare.textContent = 'Parar Compartilhamento';
+                
+                await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: true });
+
+                const participantsSnapshot = await db.collection('movie-rooms').doc(currentRoomId).collection('participants').get();
+                participantsSnapshot.forEach(doc => {
+                    if (doc.id !== userId) {
+                        createVideoPeer(doc.id, true, localVideoStream);
+                    }
+                });
+
+                localVideoStream.getVideoTracks()[0].onended = () => {
+                    stopVideoBroadcast();
+                };
+
+            } catch (err) {
+                console.error("Error starting screen share:", err);
+                showCustomModal("Não foi possível iniciar o compartilhamento de tela.");
+            }
+        }
+
+        async function stopVideoBroadcast() {
+            if (!isRoomCreator) return;
+            await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: false });
+            videoPeers.forEach(peer => peer.destroy());
+            videoPeers.clear();
+            if (localVideoStream) {
+                localVideoStream.getTracks().forEach(track => track.stop());
+                localVideoStream = null;
+            }
+            remoteVideo.srcObject = null;
+            remoteVideo.classList.add('hidden');
+            videoPlaceholder.style.display = 'flex';
+            pipButton.style.display = 'none';
+            btnStartShare.textContent = 'Compartilhar Tela';
+        }
+
+        function createVideoPeer(partnerId, initiator, stream) {
+            const peer = new SimplePeer({ initiator, trickle: true, stream });
+            
+            peer.on('signal', data => {
+                db.collection('movie-rooms').doc(currentRoomId)
+                  .collection('video-signals').add({ senderId: userId, recipientId: partnerId, data });
+            });
+
+            if (!initiator) { // Participant only
+                peer.on('stream', remoteStream => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.classList.remove('hidden');
+                    videoPlaceholder.style.display = 'none';
+                    pipButton.style.display = 'block';
+                });
+            }
+            
+            peer.on('close', () => {
+                if (isRoomCreator) videoPeers.delete(partnerId);
+                else videoPeer = null;
+            });
+
+            peer.on('error', err => console.error(`Video peer error with ${partnerId}:`, err));
+
+            if (isRoomCreator) {
+                videoPeers.set(partnerId, peer);
+            } else {
+                videoPeer = peer;
+            }
+        }
+        
+        function initiateVideoReception(creatorId) {
+            const unsub = db.collection('movie-rooms').doc(currentRoomId)
+              .collection('video-signals')
+              .where('recipientId', '==', userId)
+              .where('senderId', '==', creatorId)
+              .onSnapshot(snapshot => {
+                  snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                          if (!videoPeer) {
+                              createVideoPeer(creatorId, false, null);
+                          }
+                          videoPeer.signal(change.doc.data().data);
+                      }
+                  });
+              });
+            unsubscribers.push(unsub);
+        }
+
+        // === TEXT CHAT ===
+        function sendChatMessage() {
             const text = chatInput.value.trim();
             if (text) {
                 const message = {
@@ -966,237 +613,49 @@
                     text: text,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 };
-
-                showMessage(text, username);
-
-                db.collection('movie-rooms').doc(currentRoomId).collection('chat').add(message).then(function() {
-                    chatInput.value = '';
-                });
+                showMessage(text, 'Você');
+                db.collection('movie-rooms').doc(currentRoomId).collection('chat').add(message);
+                chatInput.value = '';
             }
-        };
+        }
 
-        chatInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                sendChatBtn.click();
-            }
-        });
-
-        // --- VOICE CHAT (CORRIGIDO) ---
-        toggleChatMode.onclick = function() {
-            const isTextChatVisible = textChatView.classList.contains('hidden');
-            if (isTextChatVisible) {
-                textChatView.classList.remove('hidden');
-                voiceChatView.classList.add('hidden');
-                toggleChatMode.innerHTML = '<i class="fas fa-microphone"></i>';
+        // === EVENT HANDLERS ===
+        btnCreateRoom.onclick = createRoom;
+        btnJoinRoom.onclick = () => joinRoom(null);
+        btnLeaveRoom.onclick = () => leaveRoom(true);
+        sendChatBtn.onclick = sendChatMessage;
+        chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendChatMessage(); });
+        
+        btnStartShare.onclick = () => {
+            if (localVideoStream) {
+                stopVideoBroadcast();
             } else {
-                textChatView.classList.add('hidden');
-                voiceChatView.classList.remove('hidden');
-                toggleChatMode.innerHTML = '<i class="fas fa-comment-alt"></i>';
+                startVideoBroadcast();
             }
         };
 
-        function createVoicePeer(partnerId, initiator) {
-            console.log(`Criando peer de voz para o parceiro ${partnerId}, sou o iniciador? ${initiator}`);
-            const peer = new SimplePeer({
-                initiator: initiator,
-                trickle: true,
-                stream: localAudioStream
-            });
-
-            // Listener para os dados de sinalização do WebRTC
-            peer.on('signal', data => {
-                console.log(`Enviando sinal para ${partnerId}:`, data);
-                // Envia o sinal para o Firestore para o parceiro específico
-                db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').doc(partnerId).collection('signals').add({
-                    senderId: userId,
-                    data: data,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }).catch(e => console.error("Erro ao enviar sinal para o Firestore:", e));
-            });
-
-            // Listener quando a conexão é estabelecida
-            peer.on('connect', () => {
-                console.log(`Conexão de voz com ${partnerId} estabelecida!`);
-                updateVoiceUI(true);
-            });
-
-            // Listener quando o stream de áudio do parceiro é recebido
-            peer.on('stream', stream => {
-                console.log(`Recebendo stream de áudio de ${partnerId}.`);
-                const audio = new Audio();
-                audio.srcObject = stream;
-                audio.autoplay = true;
-                audio.style.display = 'none';
-                document.body.appendChild(audio);
-            });
-
-            // Listener quando a conexão é fechada
-            peer.on('close', () => {
-                console.log(`Conexão de voz com ${partnerId} fechada.`);
-                voicePeerConnections.delete(partnerId);
-                voiceSignalUnsubscribers.get(partnerId)?.();
-                voiceSignalUnsubscribers.delete(partnerId);
-                updateVoiceUI(voicePeerConnections.size > 0);
-            });
-
-            // Listener para erros
-            peer.on('error', err => {
-                console.error(`Erro no peer de voz com ${partnerId}:`, err);
-                voicePeerConnections.delete(partnerId);
-                updateVoiceUI(voicePeerConnections.size > 0);
-            });
-
-            // Adiciona listener para sinais (ofertas/respostas) do parceiro
-            const signalUnsub = db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').doc(userId).collection('signals')
-                .where('senderId', '==', partnerId).onSnapshot(snapshot => {
-                    snapshot.docChanges().forEach(change => {
-                        if (change.type === 'added') {
-                            const data = change.doc.data();
-                            console.log(`Recebendo sinal do Firestore de ${partnerId}:`, data.data);
-                            peer.signal(data.data);
-                        }
-                    });
-                });
-            voiceSignalUnsubscribers.set(partnerId, signalUnsub);
-
-            return peer;
-        }
-
-        async function startVoiceChat() {
-            if (!checkWebRTCSupport()) return;
-
-            btnJoinVoiceChat.disabled = true;
-            voiceStatusText.textContent = 'Conectando...';
-            voiceStatusIndicator.classList.remove('bg-gray-500');
-            voiceStatusIndicator.classList.add('bg-yellow-500');
-            showMessage('Iniciando chat de voz...', null, true);
-
-            try {
-                localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-
-                // Cria uma entrada para o usuário na coleção de voz do Firestore
-                await db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').doc(userId).set({
-                    username: username,
-                    joinedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-
-                // Cria peers para todos os participantes que já estão no voice chat
-                const existingParticipantsSnapshot = await db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').get();
-                existingParticipantsSnapshot.docs.forEach(doc => {
-                    const partnerId = doc.id;
-                    if (partnerId !== userId && !voicePeerConnections.has(partnerId)) {
-                        const peer = createVoicePeer(partnerId, true); // Eu sou o iniciador
-                        voicePeerConnections.set(partnerId, peer);
-                    }
-                });
-
-                // Adiciona um listener para novos participantes que entrarem no voice chat
-                voiceRoomListenerUnsubscribe = db.collection('movie-rooms').doc(currentRoomId).collection('voice-calls').onSnapshot(snapshot => {
-                    snapshot.docChanges().forEach(change => {
-                        if (change.type === 'added' && change.doc.id !== userId) {
-                            const partnerId = change.doc.id;
-                            if (!voicePeerConnections.has(partnerId)) {
-                                console.log(`Novo participante ${partnerId} entrou no chat de voz. Criando peer...`);
-                                // O novo participante é o iniciador, eu sou o receptor
-                                const peer = createVoicePeer(partnerId, false);
-                                voicePeerConnections.set(partnerId, peer);
-                            }
-                        }
-                        if (change.type === 'removed' && change.doc.id !== userId) {
-                            const partnerId = change.doc.id;
-                            console.log(`Participante ${partnerId} saiu do chat de voz.`);
-                            if(voicePeerConnections.has(partnerId)) {
-                                voicePeerConnections.get(partnerId).destroy();
-                            }
-                        }
-                    });
-                });
-
-                updateVoiceUI(true);
-
-            } catch (err) {
-                console.error("Erro ao iniciar o chat de voz:", err);
-                showModal('Erro ao iniciar o chat de voz. Permissão negada ou nenhum microfone encontrado.');
-                stopVoiceChat();
-            }
-        }
-
-        function updateVoiceUI(isConnected) {
-            if (isConnected) {
-                voiceStatusText.textContent = 'Conectado';
-                voiceStatusIndicator.classList.remove('bg-yellow-500', 'bg-gray-500');
-                voiceStatusIndicator.classList.add('bg-green-500');
-                voiceChatInfo.classList.add('hidden');
-                voiceChatActiveInfo.classList.remove('hidden');
-                btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
-                btnJoinVoiceChat.onclick = stopVoiceChat;
-                btnJoinVoiceChat.disabled = false;
-                showMessage('Você entrou no chat de voz com sucesso!', null, true);
-            } else {
-                voiceStatusText.textContent = 'Pronto para entrar';
-                voiceStatusIndicator.classList.remove('bg-green-500', 'bg-yellow-500');
-                voiceStatusIndicator.classList.add('bg-gray-500');
-                voiceChatInfo.classList.remove('hidden');
-                voiceChatActiveInfo.classList.add('hidden');
-                btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
-                btnJoinVoiceChat.onclick = startVoiceChat;
-                btnJoinVoiceChat.disabled = false;
-            }
-        }
-
-        btnJoinVoiceChat.onclick = startVoiceChat;
-
-        btnToggleMute.onclick = function() {
-            if (localAudioStream) {
-                const audioTrack = localAudioStream.getAudioTracks()[0];
-                if (audioTrack) {
-                    audioTrack.enabled = !audioTrack.enabled;
-                    btnToggleMute.innerHTML = audioTrack.enabled ? '<i class="fas fa-microphone"></i> Silenciar' : '<i class="fas fa-microphone-slash"></i> Dessilenciar';
-                    showMessage(audioTrack.enabled ? 'Você ativou o som do seu microfone.' : 'Você silenciou o seu microfone.', null, true);
-                }
+        pipButton.onclick = () => {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+            } else if (remoteVideo.srcObject) {
+                remoteVideo.requestPictureInPicture();
             }
         };
 
-        // --- PARTICIPANTS ---
-        btnShowParticipants.onclick = function() {
-            participantsModal.style.display = 'block';
-        };
-
-        closeModal.forEach(function(btn) {
-            btn.onclick = function() {
+        btnShowParticipants.onclick = () => participantsModal.style.display = 'block';
+        closeModal.forEach(btn => {
+            btn.onclick = () => {
                 participantsModal.style.display = 'none';
                 invitationModal.style.display = 'none';
             };
         });
-
-        window.onclick = function(event) {
+        window.onclick = event => {
             if (event.target == participantsModal || event.target == invitationModal) {
                 event.target.style.display = 'none';
             }
         };
 
-        function setupParticipantsListener() {
-            unsubscribeParticipants = db.collection('movie-rooms').doc(currentRoomId).collection('participants').onSnapshot(function(snapshot) {
-                participantsList.innerHTML = '';
-                snapshot.forEach(function(doc) {
-                    const data = doc.data();
-                    const li = document.createElement('li');
-                    li.classList.add('p-2', 'bg-gray-700', 'rounded', 'flex', 'justify-between', 'items-center');
-                    li.innerHTML = `
-                        <span>${data.username} ${isRoomCreator && data.id === userId ? '(Você)' : isRoomCreator ? '(<i class="fas fa-crown text-yellow-500"></i>)' : ''}</span>
-                        ${isRoomCreator && data.id !== userId ? `
-                            <div>
-                                <button class="text-red-500 hover:text-red-700 mx-1" onclick="kickParticipant('${data.id}', false)" title="Expulsar"><i class="fas fa-user-times"></i></button>
-                                <button class="text-red-500 hover:text-red-700" onclick="kickParticipant('${data.id}', true)" title="Expulsar e Banir por IP"><i class="fas fa-ban"></i></button>
-                            </div>
-                        ` : ''}
-                    `;
-                    participantsList.appendChild(li);
-                });
-            });
-        }
-
-        // --- AI FUNCTIONS ---
+        // === AI FUNCTIONS ===
         btnGenerateInvitation.onclick = function() {
             const roomUrl = window.location.href.split('?')[0] + '?room=' + currentRoomId;
             const prompt = `Gere um convite criativo e amigável para uma sessão de cinema virtual. Mencione que a sala se chama "${currentRoomId}" e que o link para entrar é ${roomUrl}. O convite deve ser divertido e convidar amigos para se juntarem para assistir a um filme juntos.`;
@@ -1208,76 +667,58 @@
             const prompt = "Gere 5 perguntas divertidas para quebra-gelo para usar em uma sessão de cinema virtual com amigos. As perguntas devem ser simples e focadas em gostos de filmes, como 'Qual filme você assistiria para sempre?', 'Qual ator ou atriz você escolheria para ser seu melhor amigo(a)?' etc. Apresente as perguntas em formato de lista numerada.";
             callGeminiAPI(prompt, chatMessages);
         };
-
+        
         copyInvitationBtn.onclick = function() {
             navigator.clipboard.writeText(invitationText.textContent);
-            showModal('Convite copiado!');
+            showCustomModal('Convite copiado!');
         };
 
-        function callGeminiAPI(prompt, outputElement) {
-            btnGenerateInvitation.disabled = true;
-            btnGenerateIcebreakers.disabled = true;
-
-            const loadingMessage = document.createElement('div');
-            loadingMessage.innerHTML = `<div class="ai-msg"><strong>✨ Gemini:</strong> Gerando... <span class="loading-animation"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></span></div>`;
-
+        async function callGeminiAPI(prompt, outputElement) {
             const isChatOutput = outputElement === chatMessages;
-            let finalMessageDiv;
-
+            let loadingDiv;
             if (isChatOutput) {
-                 finalMessageDiv = document.createElement('div');
-                 finalMessageDiv.classList.add('ai-msg');
-                 chatMessages.appendChild(loadingMessage);
-                 chatMessages.scrollTop = chatMessages.scrollHeight;
+                loadingDiv = document.createElement('div');
+                loadingDiv.innerHTML = `<div class="ai-msg"><strong>✨ Gemini:</strong> Gerando... <span class="inline-flex items-center"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></span></div>`;
+                chatMessages.appendChild(loadingDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             } else {
-                 outputElement.textContent = 'Gerando...';
+                outputElement.textContent = 'Gerando...';
             }
 
-            const apiKey = "";
+            const apiKey = ""; // API key will be provided by the environment
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }]
-            };
-
-            fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(function(response) {
-                return response.json();
-            }).then(function(result) {
-                if (isChatOutput) {
-                    loadingMessage.remove();
-                }
-
-                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-                    const text = result.candidates[0].content.parts[0].text;
+            
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+                const result = await response.json();
+                
+                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
                     if (isChatOutput) {
                         showMessage(text, null, false, true);
                     } else {
                         outputElement.textContent = text;
                     }
                 } else {
-                    const errorMsg = 'Erro ao gerar conteúdo. Tente novamente mais tarde.';
-                    if (isChatOutput) {
-                        showMessage(errorMsg, null, true);
-                    } else {
-                        outputElement.textContent = errorMsg;
-                    }
+                    throw new Error("Resposta da API inválida.");
                 }
-            }).catch(function(err) {
+
+            } catch (err) {
                 console.error("Error in Gemini API:", err);
+                const errorMsg = 'Erro ao gerar conteúdo. Tente novamente mais tarde.';
                 if (isChatOutput) {
-                    loadingMessage.remove();
-                    showMessage('Erro ao gerar conteúdo. Tente novamente mais tarde.', null, true);
+                    showMessage(errorMsg, null, true);
                 } else {
-                    outputElement.textContent = 'Erro ao gerar conteúdo. Tente novamente mais tarde.';
+                    outputElement.textContent = errorMsg;
                 }
-            }).finally(function() {
-                btnGenerateInvitation.disabled = false;
-                btnGenerateIcebreakers.disabled = false;
-            });
+            } finally {
+                if (loadingDiv) loadingDiv.remove();
+            }
         }
     </script>
 </body>
