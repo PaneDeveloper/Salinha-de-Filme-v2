@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Movie Room</title>
+    <title>Sala de Cinema Virtual</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase -->
@@ -82,7 +82,7 @@
     <div id="container">
         <!-- UI do Menu -->
         <div id="menu" class="w-full flex flex-col items-center p-4">
-            <h1 class="text-3xl font-bold mb-2 text-indigo-400">Movie Room</h1>
+            <h1 class="text-3xl font-bold mb-2 text-indigo-400">Sala de Cinema Virtual</h1>
             <p class="mb-6 text-gray-400">Crie uma sala para assistir com amigos</p>
             <input id="usernameInput" placeholder="Seu nome de usuário aqui :3" class="w-full p-4 mb-4 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
             <button id="btnCreateRoom" class="w-full py-4 mb-4 btn-primary text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Criar Nova Sala</button>
@@ -111,7 +111,7 @@
                         <div id="videoPlaceholder" class="movie-screen flex flex-col items-center justify-center text-center text-gray-400 p-8">
                             <div class="p-8 bg-gray-800 rounded-xl">
                                 <p id="videoPlaceholderText" class="text-lg mb-4">Esperando o host compartilhar a tela...</p>
-                                <div id="hostControls">
+                                <div id="hostControls" class="flex flex-col items-center">
                                     <button id="btnStartShare" class="mt-3 btn-primary px-8 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Compartilhar Tela</button>
                                 </div>
                             </div>
@@ -247,16 +247,11 @@
         let currentRoomId = null;
         let username = null;
         let isRoomCreator = false;
-        let localVideoStream = null;
-        let localAudioStream = null;
+        let localStream = null;
         
         // State for video and voice connections
-        let videoPeer = null; // For participants
-        let videoPeers = new Map(); // For host
-        let voicePeers = new Map();
-
-        // Firestore unsubscribers
-        let unsubscribers = [];
+        let peers = new Map(); // Store all peer connections (video and voice)
+        let unsubscribers = []; // Store all Firestore unsubscribers
 
         // === INITIALIZATION AND HELPER FUNCTIONS ===
         function showCustomModal(message) {
@@ -403,34 +398,22 @@
         async function leaveRoom(userInitiated = true) {
             if (!currentRoomId) return;
 
-            // Clean up video connections
-            if (isRoomCreator) {
-                videoPeers.forEach(p => p.destroy());
-                videoPeers.clear();
-                if (localVideoStream) {
-                    localVideoStream.getTracks().forEach(track => track.stop());
-                    localVideoStream = null;
-                }
-                if (userInitiated) {
-                     await db.collection('movie-rooms').doc(currentRoomId).delete();
-                }
-            } else {
-                if (videoPeer) videoPeer.destroy();
-                videoPeer = null;
+            // Clean up all peer connections
+            peers.forEach(p => p.destroy());
+            peers.clear();
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
             
-            // Clean up voice connections
-            voicePeers.forEach(p => p.destroy());
-            voicePeers.clear();
-            if (localAudioStream) {
-                localAudioStream.getTracks().forEach(track => track.stop());
-                localAudioStream = null;
-            }
-
             if (userInitiated) {
                  await db.collection('movie-rooms').doc(currentRoomId).collection('participants').doc(userId).delete();
+                 if (isRoomCreator) {
+                     await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: false });
+                     // Deleting the room is too aggressive, just update the broadcasting status
+                 }
             }
-
+            
             cleanupListeners();
             
             currentRoomId = null;
@@ -448,7 +431,7 @@
         // === LISTENERS ===
         function setupRoomListeners() {
             const roomRef = db.collection('movie-rooms').doc(currentRoomId);
-
+            
             // General room listener (for broadcast status)
             const unsubRoom = roomRef.onSnapshot(doc => {
                 if (!doc.exists) {
@@ -457,8 +440,11 @@
                     return;
                 }
                 const roomData = doc.data();
-                if (!isRoomCreator && roomData.isBroadcasting && !videoPeer) {
-                    initiateVideoReception(roomData.creatorId);
+                if (!isRoomCreator) {
+                    // Participant: check if host started broadcasting
+                    if (roomData.isBroadcasting && !peers.has(roomData.creatorId)) {
+                        initiateVideoPeer(roomData.creatorId);
+                    }
                 }
             });
             unsubscribers.push(unsubRoom);
@@ -466,32 +452,59 @@
             // Participants listener
             const unsubParticipants = roomRef.collection('participants').onSnapshot(snapshot => {
                 participantsList.innerHTML = '';
+                const participantIds = new Set();
                 snapshot.forEach(doc => {
                     const participant = doc.data();
+                    participantIds.add(doc.id);
                     const li = document.createElement('li');
                     li.textContent = `${participant.username} ${doc.id === userId ? '(Você)' : ''}`;
                     participantsList.appendChild(li);
                 });
-                // For host: manage video connections
-                if (isRoomCreator && localVideoStream) {
-                    const currentParticipants = new Set(snapshot.docs.map(d => d.id));
-                    // Add new peers
-                    currentParticipants.forEach(id => {
-                        if (id !== userId && !videoPeers.has(id)) {
-                             createVideoPeer(id, true, localVideoStream);
-                        }
-                    });
-                    // Remove old peers
-                    videoPeers.forEach((peer, id) => {
-                        if (!currentParticipants.has(id)) {
-                            peer.destroy();
-                            videoPeers.delete(id);
+                
+                // For host: manage peer connections for new participants
+                if (isRoomCreator && localStream) {
+                    participantIds.forEach(id => {
+                        if (id !== userId && !peers.has(id)) {
+                             createPeer(id, true, localStream);
                         }
                     });
                 }
+                
+                // Remove peers for participants who left
+                peers.forEach((peer, id) => {
+                    if (!participantIds.has(id)) {
+                        peer.destroy();
+                        peers.delete(id);
+                    }
+                });
             });
             unsubscribers.push(unsubParticipants);
 
+            // Signal listener: listen for signals from anyone else in the room
+            const unsubSignals = roomRef.collection('signals')
+                .where('recipientId', '==', userId)
+                .onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            const signalData = change.doc.data();
+                            const senderId = signalData.senderId;
+                            let peer = peers.get(senderId);
+                            
+                            if (!peer) {
+                                // If peer doesn't exist, create it. This is for participants receiving the initial offer.
+                                peer = createPeer(senderId, false, localStream);
+                            }
+
+                            // Signal the peer with the received data
+                            peer.signal(signalData.data);
+                            
+                            // Delete the signal document after processing
+                            change.doc.ref.delete().catch(err => console.error("Error deleting signal doc:", err));
+                        }
+                    });
+                });
+            unsubscribers.push(unsubSignals);
+            
             // Chat listener
             const unsubChat = roomRef.collection('chat').orderBy('timestamp').onSnapshot(snapshot => {
                 snapshot.docChanges().forEach(change => {
@@ -505,64 +518,25 @@
             });
             unsubscribers.push(unsubChat);
         }
-
-        // === VIDEO STREAMING (REFACTORED) ===
-        async function startVideoBroadcast() {
-            if (!isRoomCreator) return;
-            try {
-                localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-                
-                remoteVideo.srcObject = localVideoStream;
-                remoteVideo.muted = true;
-                remoteVideo.classList.remove('hidden');
-                videoPlaceholder.style.display = 'none';
-                pipButton.style.display = 'block';
-                btnStartShare.textContent = 'Parar Compartilhamento';
-                
-                await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: true });
-
-                const participantsSnapshot = await db.collection('movie-rooms').doc(currentRoomId).collection('participants').get();
-                participantsSnapshot.forEach(doc => {
-                    if (doc.id !== userId) {
-                        createVideoPeer(doc.id, true, localVideoStream);
-                    }
-                });
-
-                localVideoStream.getVideoTracks()[0].onended = () => {
-                    stopVideoBroadcast();
-                };
-
-            } catch (err) {
-                console.error("Error starting screen share:", err);
-                showCustomModal("Não foi possível iniciar o compartilhamento de tela.");
-            }
-        }
-
-        async function stopVideoBroadcast() {
-            if (!isRoomCreator) return;
-            await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: false });
-            videoPeers.forEach(peer => peer.destroy());
-            videoPeers.clear();
-            if (localVideoStream) {
-                localVideoStream.getTracks().forEach(track => track.stop());
-                localVideoStream = null;
-            }
-            remoteVideo.srcObject = null;
-            remoteVideo.classList.add('hidden');
-            videoPlaceholder.style.display = 'flex';
-            pipButton.style.display = 'none';
-            btnStartShare.textContent = 'Compartilhar Tela';
-        }
-
-        function createVideoPeer(partnerId, initiator, stream) {
-            const peer = new SimplePeer({ initiator, trickle: true, stream });
+        
+        // === WEBRTC PEER MANAGEMENT (REFACTORED) ===
+        // This function creates and configures a SimplePeer instance
+        function createPeer(partnerId, initiator, stream) {
+            const peer = new SimplePeer({ initiator, trickle: false, stream });
             
             peer.on('signal', data => {
+                // Send the signal to Firestore for the other peer to pick up
                 db.collection('movie-rooms').doc(currentRoomId)
-                  .collection('video-signals').add({ senderId: userId, recipientId: partnerId, data });
+                  .collection('signals').add({
+                      senderId: userId,
+                      recipientId: partnerId,
+                      data: data,
+                      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                  });
             });
-
-            if (!initiator) { // Participant only
+            
+            // Only participants need to listen for streams
+            if (!initiator) {
                 peer.on('stream', remoteStream => {
                     remoteVideo.srcObject = remoteStream;
                     remoteVideo.classList.remove('hidden');
@@ -571,36 +545,95 @@
                 });
             }
             
-            peer.on('close', () => {
-                if (isRoomCreator) videoPeers.delete(partnerId);
-                else videoPeer = null;
+            peer.on('connect', () => {
+                console.log(`Connected with peer ${partnerId}`);
+                videoPlaceholderText.textContent = 'Conectado!';
             });
 
-            peer.on('error', err => console.error(`Video peer error with ${partnerId}:`, err));
+            peer.on('close', () => {
+                console.log(`Connection closed with peer ${partnerId}`);
+                peers.delete(partnerId);
+                // If the host leaves, clean up the player
+                if (partnerId === (isRoomCreator ? 'N/A' : currentRoomId)) { // Simple check for host
+                     remoteVideo.srcObject = null;
+                     remoteVideo.classList.add('hidden');
+                     videoPlaceholder.style.display = 'flex';
+                     videoPlaceholderText.textContent = 'Esperando o host compartilhar a tela...';
+                }
+            });
 
-            if (isRoomCreator) {
-                videoPeers.set(partnerId, peer);
-            } else {
-                videoPeer = peer;
-            }
+            peer.on('error', err => console.error(`Peer error with ${partnerId}:`, err));
+            
+            peers.set(partnerId, peer);
+            return peer;
         }
         
-        function initiateVideoReception(creatorId) {
-            const unsub = db.collection('movie-rooms').doc(currentRoomId)
-              .collection('video-signals')
-              .where('recipientId', '==', userId)
-              .where('senderId', '==', creatorId)
-              .onSnapshot(snapshot => {
-                  snapshot.docChanges().forEach(change => {
-                      if (change.type === 'added') {
-                          if (!videoPeer) {
-                              createVideoPeer(creatorId, false, null);
-                          }
-                          videoPeer.signal(change.doc.data().data);
-                      }
-                  });
-              });
-            unsubscribers.push(unsub);
+        // Function to start the screen sharing broadcast (Host)
+        async function startVideoBroadcast() {
+            if (!isRoomCreator) return;
+            try {
+                videoPlaceholderText.textContent = 'Solicitando permissão para compartilhar...';
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        frameRate: { ideal: 30, max: 60 },
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 }
+                    },
+                    audio: true
+                });
+                
+                // Show the local stream as a preview on the host's screen
+                remoteVideo.srcObject = localStream;
+                remoteVideo.muted = true;
+                remoteVideo.classList.remove('hidden');
+                videoPlaceholder.style.display = 'none';
+                pipButton.style.display = 'block';
+                btnStartShare.textContent = 'Parar Compartilhamento';
+                
+                await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: true });
+                
+                // Create a peer connection for each participant in the room
+                const participantsSnapshot = await db.collection('movie-rooms').doc(currentRoomId).collection('participants').get();
+                participantsSnapshot.forEach(doc => {
+                    if (doc.id !== userId) {
+                        createPeer(doc.id, true, localStream);
+                    }
+                });
+
+                // Listen for when the screen share ends
+                localStream.getVideoTracks()[0].onended = () => {
+                    stopVideoBroadcast();
+                };
+
+            } catch (err) {
+                console.error("Error starting screen share:", err);
+                showCustomModal("Não foi possível iniciar o compartilhamento de tela. Verifique as permissões do seu navegador.");
+            }
+        }
+
+        // Function to stop the screen sharing broadcast (Host)
+        async function stopVideoBroadcast() {
+            if (!isRoomCreator) return;
+            await db.collection('movie-rooms').doc(currentRoomId).update({ isBroadcasting: false });
+            peers.forEach(peer => peer.destroy());
+            peers.clear();
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            remoteVideo.srcObject = null;
+            remoteVideo.classList.add('hidden');
+            videoPlaceholder.style.display = 'flex';
+            pipButton.style.display = 'none';
+            btnStartShare.textContent = 'Compartilhar Tela';
+            videoPlaceholderText.textContent = 'Clique em "Compartilhar Tela" para iniciar.';
+        }
+        
+        // Function to initiate peer connection for a participant (Participant)
+        function initiateVideoPeer(creatorId) {
+            videoPlaceholderText.textContent = 'Iniciando conexão com o host...';
+            // Create the peer and signaling logic will be handled by the listener
+            createPeer(creatorId, false, null);
         }
 
         // === TEXT CHAT ===
@@ -627,7 +660,7 @@
         chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendChatMessage(); });
         
         btnStartShare.onclick = () => {
-            if (localVideoStream) {
+            if (localStream) {
                 stopVideoBroadcast();
             } else {
                 startVideoBroadcast();
@@ -669,7 +702,7 @@
         };
         
         copyInvitationBtn.onclick = function() {
-            navigator.clipboard.writeText(invitationText.textContent);
+            document.execCommand('copy');
             showCustomModal('Convite copiado!');
         };
 
