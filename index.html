@@ -120,16 +120,15 @@
                 </div>
                 <!-- Chat e Controles (lado direito) -->
                 <div id="chat-sidebar" class="flex-1 flex flex-col gap-4">
-                    <div class="flex flex-col md:flex-row justify-between items-center px-4 gap-4">
-                        <div class="flex gap-2">
-                            <button id="btnShowParticipants" class="chat-toggle-button" title="Ver Participantes">
-                                <i class="fas fa-users"></i>
-                            </button>
-                            <button id="toggleChatMode" class="chat-toggle-button" title="Alternar modo de chat">
-                                <i class="fas fa-microphone"></i>
-                            </button>
-                            <button id="btnLeaveRoom" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Sair</button>
-                        </div>
+                    <!-- Botões alinhados à direita -->
+                    <div class="flex flex-col md:flex-row justify-end items-center px-4 gap-4">
+                        <button id="btnShowParticipants" class="chat-toggle-button" title="Ver Participantes">
+                            <i class="fas fa-users"></i>
+                        </button>
+                        <button id="toggleChatMode" class="chat-toggle-button" title="Alternar modo de chat">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button id="btnLeaveRoom" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Sair</button>
                     </div>
                     <div id="textChatView" class="flex flex-col gap-4 h-full">
                         <h3 class="text-xl font-semibold text-center">Chat da Sala</h3>
@@ -249,6 +248,10 @@
         let isRoomCreator = false;
         let localStream = null;
         
+        // Estado inicial: o narrador está desativado por padrão
+        let ttsEnabled = false;
+        let isTtsAllEnabled = false;
+
         // State for video and voice connections
         let peers = new Map(); // Store all peer connections (video and voice)
         let unsubscribers = []; // Store all Firestore unsubscribers
@@ -275,10 +278,21 @@
                 const markdown = marked.parse(text);
                 div.innerHTML = `<strong>✨ Gemini:</strong><div class="ai-msg">${markdown}</div>`;
             } else {
-                div.innerHTML = `<strong class="text-indigo-300">${sender}:</strong> ${text}`;
+                const senderName = (sender === username) ? 'Você' : sender;
+                div.innerHTML = `<strong class="text-indigo-300">${senderName}:</strong> ${text}`;
             }
             chatMessages.appendChild(div);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Função para ler o texto em voz alta
+        function speakText(text) {
+            // A fala só ocorrerá se o TTS for ativado localmente por um comando.
+            if ((ttsEnabled || isTtsAllEnabled) && 'speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'pt-BR';
+                window.speechSynthesis.speak(utterance);
+            }
         }
 
         auth.onAuthStateChanged(user => {
@@ -492,7 +506,7 @@
                             
                             if (!peer) {
                                 // If peer doesn't exist, create it. This is for participants receiving the initial offer.
-                                peer = createPeer(senderId, false, localStream);
+                                peer = createPeer(senderId, false, null);
                             }
 
                             // Signal the peer with the received data
@@ -510,9 +524,25 @@
                 snapshot.docChanges().forEach(change => {
                     if (change.type === 'added') {
                         const msg = change.doc.data();
-                        if (msg.senderId !== userId) {
-                            showMessage(msg.text, msg.username, msg.isSystem, msg.isAI);
+                        
+                        // Não mostre a mensagem que o próprio usuário enviou (evita duplicatas).
+                        if (msg.senderId === userId) {
+                            return; 
                         }
+
+                        // Verifica a mensagem do sistema para atualizar o estado do TTS para todos
+                        if (msg.isSystem && msg.text.includes('ativado para todos')) {
+                            isTtsAllEnabled = true;
+                        } else if (msg.isSystem && msg.text.includes('desativado para todos')) {
+                            isTtsAllEnabled = false;
+                        }
+
+                        // Lê a mensagem em voz alta, mas apenas se o narrador estiver ativado localmente ou para todos
+                        if (!msg.isSystem && (ttsEnabled || isTtsAllEnabled)) {
+                            speakText(msg.text);
+                        }
+                        
+                        showMessage(msg.text, msg.username, msg.isSystem, msg.isAI);
                     }
                 });
             });
@@ -639,17 +669,52 @@
         // === TEXT CHAT ===
         function sendChatMessage() {
             const text = chatInput.value.trim();
-            if (text) {
+            if (!text) return;
+
+            // Se for o comando do admin para todos
+            if (text.toLowerCase() === '/tts all') {
+                if (isRoomCreator) {
+                    isTtsAllEnabled = !isTtsAllEnabled;
+                    const statusMessage = {
+                        senderId: userId,
+                        username: username,
+                        text: `O narrador foi ${isTtsAllEnabled ? 'ativado' : 'desativado'} para todos por ${username}.`,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        isSystem: true // Mensagem do sistema
+                    };
+                    db.collection('movie-rooms').doc(currentRoomId).collection('chat').add(statusMessage);
+                } else {
+                    showCustomModal("Apenas o criador da sala pode usar este comando.");
+                }
+            } 
+            // Se for o comando individual
+            else if (text.toLowerCase() === '/tts') {
+                ttsEnabled = !ttsEnabled;
+                const statusMessage = {
+                    senderId: userId,
+                    username: username,
+                    text: `O narrador de ${username} foi ${ttsEnabled ? 'ativado' : 'desativado'}.`,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    isSystem: true // Mensagem do sistema
+                };
+                db.collection('movie-rooms').doc(currentRoomId).collection('chat').add(statusMessage);
+            }
+            // Se for uma mensagem normal
+            else {
+                // Lê a mensagem em voz alta, mas apenas se o narrador estiver ativado localmente ou para todos
+                if (ttsEnabled || isTtsAllEnabled) {
+                    speakText(text);
+                }
                 const message = {
                     senderId: userId,
                     username: username,
                     text: text,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    isSystem: false
                 };
-                showMessage(text, 'Você');
                 db.collection('movie-rooms').doc(currentRoomId).collection('chat').add(message);
-                chatInput.value = '';
             }
+            chatInput.value = '';
         }
 
         // === EVENT HANDLERS ===
