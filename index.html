@@ -10,7 +10,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Importamos getDocs e writeBatch para apagar as mensagens do chat de uma vez
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, serverTimestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         setLogLevel('Debug');
         
@@ -32,7 +33,9 @@
             collection,
             query,
             where,
-            serverTimestamp
+            serverTimestamp,
+            getDocs,
+            writeBatch
         };
     </script>
     <!-- Simple Peer -->
@@ -65,12 +68,11 @@
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
         #chatMessages {
-            max-height: 250px;
+            height: 250px; /* Alterado para altura fixa */
             overflow-y: auto;
             padding: 0.75rem;
             background: #111827;
             border-radius: 0.75rem;
-            flex-grow: 1;
             border: 1px solid #374151;
         }
         .system-msg { text-align: center; font-style: italic; color: #9ca3af; margin: 8px 0; }
@@ -100,7 +102,7 @@
             #main-content { flex-direction: row; }
             #chat-sidebar { flex: 1; }
             #player-container { flex: 2; }
-            #chatMessages { max-height: none; }
+            #chatMessages { height: auto; } /* Permite que o chat se expanda em telas maiores */
         }
     </style>
 </head>
@@ -151,7 +153,7 @@
                         <button id="btnShowParticipants" class="chat-toggle-button" title="Ver Participantes">
                             <i class="fas fa-users"></i>
                         </button>
-                        <button id="toggleTtsChat" class="chat-toggle-button" title="Alternar leitura de chat">
+                        <button id="toggleTtsChat" class="chat-toggle-button" title="Alternar leitura de chat" tabindex="0">
                             <i class="fas fa-volume-up"></i>
                         </button>
                         <button id="toggleChatMode" class="chat-toggle-button" title="Alternar modo de chat">
@@ -228,7 +230,7 @@
     <script type="module">
         // === VARIÁVEIS GLOBAIS FORNECIDAS PELO AMBIENTE ===
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // === CONFIGURAÇÃO FIREBASE ===
@@ -302,8 +304,6 @@
         // Váriaveis para o TTS
         let voices = [];
         let selectedVoice = null;
-        let lastClickTime = 0;
-        const DOUBLE_CLICK_TIME = 300; // Tempo em milissegundos para considerar um duplo clique
         
         // === API LLM (só para o assistente, o TTS agora é nativo) ===
         const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=";
@@ -775,9 +775,59 @@
             }
         }
         
+        // Novo comando para limpar o chat
+        async function clearChatAll() {
+            const chatRef = firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/chat`);
+            
+            try {
+                // Adiciona uma mensagem do sistema para que todos vejam o aviso
+                await firebaseApp.addDoc(chatRef, {
+                    username: 'Sistema',
+                    text: 'O chat foi limpo pelo criador da sala.',
+                    senderId: 'system',
+                    timestamp: firebaseApp.serverTimestamp(),
+                    isSystem: true,
+                    isAI: false
+                });
+
+                // Pega todas as mensagens e apaga usando um "batch delete"
+                const q = firebaseApp.query(chatRef);
+                const querySnapshot = await firebaseApp.getDocs(q);
+                
+                const batch = firebaseApp.writeBatch(db);
+                querySnapshot.forEach((doc) => {
+                    // Não apaga a mensagem do sistema recém-criada
+                    if (doc.id !== 'system') {
+                       batch.delete(doc.ref);
+                    }
+                });
+                await batch.commit();
+
+                console.log("Chat limpo com sucesso.");
+
+            } catch (e) {
+                console.error("Erro ao limpar o chat:", e);
+                showMessage("Erro ao limpar o chat. Tente novamente.", 'Sistema', true);
+            }
+        }
+
+
         async function sendChatMessage() {
             const messageText = chatInput.value.trim();
             if (messageText === '') return;
+
+            // Checa se o comando /cca foi usado
+            if (messageText === '/cca') {
+                // Se for o criador, chama a função para limpar o chat
+                if (isRoomCreator) {
+                    clearChatAll();
+                } else {
+                    // Se não for o criador, mostra uma mensagem de erro
+                    showMessage("Apenas o criador da sala pode limpar o chat.", 'Sistema', true);
+                }
+                chatInput.value = ''; // Limpa o campo de texto
+                return; // Para a execução para que o comando não seja enviado como mensagem normal
+            }
 
             const chatRef = firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/chat`);
             
@@ -937,52 +987,34 @@
             }
         });
 
-        // Lógica de clique/toque para o botão TTS (PC e celular)
-        toggleTtsChat.addEventListener('click', (e) => {
-            e.preventDefault(); // Impede o comportamento padrão do clique
-            const currentTime = new Date().getTime();
-            const timeSinceLastClick = currentTime - lastClickTime;
-
-            if (timeSinceLastClick < DOUBLE_CLICK_TIME && timeSinceLastClick > 0) {
-                // Duplo clique (celular) ou clique rápido
-                // Abre o modal de vozes
-                populateVoiceList();
-                voiceModal.style.display = 'block';
-                lastClickTime = 0; // Reseta o timer
+        // Botão TTS: um clique para ligar/desligar, um clique direito para abrir o menu de voz
+        toggleTtsChat.addEventListener('click', () => {
+            isTtsEnabled = !isTtsEnabled;
+            if (isTtsEnabled) {
+                toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-green-500"></i>';
             } else {
-                // Clique simples
-                isTtsEnabled = !isTtsEnabled;
-                if (isTtsEnabled) {
-                    toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-green-500"></i>';
-                } else {
-                    toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-white"></i>';
-                }
-                lastClickTime = currentTime;
+                toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-white"></i>';
             }
         });
         
-        // Lógica de clique direito para o botão TTS (PC)
         toggleTtsChat.addEventListener('contextmenu', (e) => {
             e.preventDefault(); // Impede o menu de contexto padrão
             populateVoiceList();
             voiceModal.style.display = 'block';
         });
 
-        // Lógica de evento de teclado para TVs
-        document.addEventListener('keydown', (e) => {
-            // Verifica se a tecla é "MediaPlayPause" (para controle remoto) ou "Enter" (para teclado comum)
-            if (e.key === 'MediaPlayPause' || e.key === 'Enter') {
+        // Adiciona um listener de teclado ao botão para acessibilidade
+        toggleTtsChat.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
                 e.preventDefault();
-                // Apenas abre o modal se o chat estiver na tela, para evitar que abra na tela de login.
-                if (appUi.style.display !== 'none') {
-                    populateVoiceList();
-                    voiceModal.style.display = 'block';
-                }
+                populateVoiceList();
+                voiceModal.style.display = 'block';
             }
         });
-
+        
         chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
+                e.preventDefault();
                 sendChatMessage();
             }
         });
