@@ -9,18 +9,17 @@
     <!-- Firebase Modular SDK v11.6.1 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         // Importamos getDocs e writeBatch para apagar as mensagens do chat de uma vez
         import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, serverTimestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         setLogLevel('Debug');
-        
+
         // Expose Firebase services to the global scope for easier use in the script
         window.firebaseApp = {
             initializeApp,
             getAuth,
             signInAnonymously,
-            signInWithCustomToken,
             onAuthStateChanged,
             getFirestore,
             doc,
@@ -111,7 +110,7 @@
             transition: all 0.3s ease;
             overflow: hidden;
         }
-        
+
         /* Efeito de hover */
         .glass-button:hover {
             background-color: rgba(255, 255, 255, 0.3);
@@ -264,13 +263,22 @@
         </div>
     </div>
     <script type="module">
-        // === VARIÁVEIS GLOBAIS FORNECIDAS PELO AMBIENTE ===
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
         // === CONFIGURAÇÃO FIREBASE ===
-        // Inicializa o Firebase com a configuração fornecida pelo ambiente.
+        // Cole as informações de configuração do seu projeto Firebase aqui
+        // **Este passo é necessário para que a página funcione no GitHub para todos os usuários.**
+        // Você pode encontrar esses dados no Console do Firebase em 'Configurações do Projeto' -> 'Geral'.
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        const appId = firebaseConfig.appId || 'default-app-id';
+
+        // Inicializa o Firebase com a configuração
         const app = firebaseApp.initializeApp(firebaseConfig);
         const auth = firebaseApp.getAuth(app);
         const db = firebaseApp.getFirestore(app);
@@ -306,7 +314,7 @@
         const voiceChatInfo = document.getElementById('voiceChatInfo');
         const btnToggleMute = document.getElementById('btnToggleMute');
         const audioElements = document.getElementById('audioElements');
-        
+
         const toggleTtsChat = document.getElementById('toggleTtsChat');
         let isTtsEnabled = false;
 
@@ -320,7 +328,7 @@
 
         const btnGenerateInvitation = document.getElementById('btnGenerateInvitation');
         const btnGenerateIcebreakers = document.getElementById('btnGenerateIcebreakers');
-        
+
         const voiceModal = document.getElementById('voiceModal');
         const voiceList = document.getElementById('voiceList');
 
@@ -331,17 +339,17 @@
         let isRoomCreator = false;
         let localVideoStream = null;
         let localAudioStream = null;
-        
+
         let peers = new Map();
         let voicePeers = new Map();
-        
+
         let unsubscribers = [];
         let isVoiceMuted = false;
-        
+
         // Váriaveis para o TTS
         let voices = [];
         let selectedVoice = null;
-        
+
         // === API LLM ===
         // A chave da API é injetada automaticamente pelo ambiente de execução, por isso a variável fica vazia.
         const apiKey = "";
@@ -360,7 +368,7 @@
             `;
             document.body.appendChild(modal);
         }
-        
+
         function showMessage(text, sender = null, isSystem = false, isAI = false) {
             const div = document.createElement('div');
             if (isSystem) {
@@ -389,7 +397,7 @@
             }
             return true;
         }
-        
+
         function cleanupListeners() {
             unsubscribers.forEach(unsub => unsub());
             unsubscribers = [];
@@ -418,7 +426,7 @@
                 };
                 voiceList.appendChild(li);
             });
-            
+
             if (voices.length === 0) {
                 const li = document.createElement('li');
                 li.textContent = "Nenhuma voz disponível no seu navegador.";
@@ -426,7 +434,7 @@
                 voiceList.appendChild(li);
             }
         }
-        
+
         // Listener para o evento de mudança de vozes do navegador
         if ('speechSynthesis' in window) {
             speechSynthesis.addEventListener('voiceschanged', getVoices);
@@ -436,10 +444,10 @@
             if ('speechSynthesis' in window) {
                 // Cancela qualquer fala anterior
                 speechSynthesis.cancel();
-                
+
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'pt-BR'; // Define a linguagem padrão
-                
+
                 // Se uma voz foi selecionada, use-a
                 if (selectedVoice) {
                     utterance.voice = selectedVoice;
@@ -450,11 +458,10 @@
                         utterance.voice = ptVoice;
                     }
                 }
-                
+
                 speechSynthesis.speak(utterance);
             }
         }
-
 
         // === AUTENTICAÇÃO E INICIALIZAÇÃO ===
         async function setupAuthAndUI() {
@@ -463,11 +470,7 @@
             connectionStatus.classList.add('text-gray-400');
 
             try {
-                if (initialAuthToken) {
-                    await firebaseApp.signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await firebaseApp.signInAnonymously(auth);
-                }
+                await firebaseApp.signInAnonymously(auth);
                 userId = auth.currentUser.uid;
                 connectionStatus.textContent = 'Conectado com Sucesso!';
                 connectionStatus.classList.remove('text-gray-400');
@@ -484,13 +487,13 @@
         async function callGeminiApi(prompt, isInvitation) {
             const button = isInvitation ? btnGenerateInvitation : btnGenerateIcebreakers;
             button.disabled = true;
-            
+
             // Adiciona um indicador de carregamento
             const loadingIndicator = document.createElement('div');
             loadingIndicator.className = 'ai-loading-indicator';
             loadingIndicator.innerHTML = '<span>Gerando...</span><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
             button.insertAdjacentElement('afterend', loadingIndicator);
-            
+
             try {
                 const payload = {
                     contents: [{ parts: [{ text: prompt }] }],
@@ -499,20 +502,20 @@
                         parts: [{ text: "Atue como um assistente amigável e criativo para um grupo de amigos que quer se divertir. Seja direto, simples e use uma linguagem informal (gírias, emojis, kkkk)." }]
                     },
                 };
-                
+
                 const response = await fetch(`${GEMINI_API_URL}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
+
                 const result = await response.json();
                 const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar o texto. Tente novamente.";
-                
+
                 if (isInvitation) {
                     invitationText.textContent = text;
                     invitationModal.style.display = 'block';
@@ -540,14 +543,14 @@
 
             btnCreateRoom.disabled = true;
             btnCreateRoom.textContent = 'Criando...';
-            
+
             isRoomCreator = true;
             currentRoomId = generateRoomCode();
-            
+
             const roomRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms`, currentRoomId);
             try {
-                await firebaseApp.setDoc(roomRef, { 
-                    creatorId: userId, 
+                await firebaseApp.setDoc(roomRef, {
+                    creatorId: userId,
                     createdAt: firebaseApp.serverTimestamp(),
                     isBroadcasting: false
                 });
@@ -567,7 +570,7 @@
             if (!code) {
                 username = usernameInput.value.trim();
                 code = roomInput.value.trim().toUpperCase();
-                if (!userId || !username) return showCustomModal('Por favor, insira um nome de usuário.');
+                if (!userId || !username) return showCustomModal('Por favor, insira um nome de usuário válido.');
                 if (!code) return showCustomModal('Por favor, insira um código de sala válido.');
                 if (!checkWebRTCSupport()) return;
                 btnJoinRoom.disabled = true;
@@ -595,21 +598,21 @@
                 username: username,
                 joinedAt: firebaseApp.serverTimestamp()
             });
-            
+
             menu.style.display = 'none';
             appUi.style.display = 'flex';
             roomCodeDisplay.textContent = currentRoomId;
             hostControls.style.display = isRoomCreator ? 'block' : 'none';
-            
+
             // Lógica para mudar o nome do projetor/telão
             if (isRoomCreator) {
                 videoScreenTitle.textContent = 'Projetor';
             } else {
                 videoScreenTitle.textContent = 'Telão';
             }
-            
+
             setupRoomListeners();
-            
+
             if (!isRoomCreator) {
                 videoPlaceholderText.textContent = roomData.isBroadcasting ? 'Conectando ao stream...' : 'Esperando o host compartilhar a tela...';
             } else {
@@ -638,7 +641,7 @@
                 localAudioStream.getTracks().forEach(track => track.stop());
                 localAudioStream = null;
             }
-            
+
             if (userInitiated) {
                 const participantRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/participants`, userId);
                 await firebaseApp.deleteDoc(participantRef);
@@ -647,16 +650,16 @@
                     await firebaseApp.updateDoc(roomRef, { isBroadcasting: false });
                 }
             }
-            
+
             cleanupListeners();
-            
+
             currentRoomId = null;
             isRoomCreator = false;
             remoteVideo.srcObject = null;
             remoteVideo.classList.add('hidden');
             videoPlaceholder.style.display = 'flex';
             pipButton.style.display = 'none';
-            
+
             // Reseta a interface de voice chat
             voiceChatView.classList.add('hidden');
             textChatView.classList.remove('hidden');
@@ -666,7 +669,7 @@
             btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
             voiceChatInfo.classList.remove('hidden');
             voiceChatActiveInfo.classList.add('hidden');
-            
+
             menu.style.display = 'flex';
             appUi.style.display = 'none';
             chatMessages.innerHTML = '';
@@ -675,7 +678,7 @@
         // === WEBRTC PEER MANAGEMENT ===
         function createPeer(partnerId, initiator, stream, peerMap, isVideo) {
             const peer = new SimplePeer({ initiator, trickle: false, stream });
-            
+
             peer.on('signal', data => {
                 const signalsRef = firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/signals`);
                 firebaseApp.addDoc(signalsRef, {
@@ -686,7 +689,7 @@
                     timestamp: firebaseApp.serverTimestamp()
                 });
             });
-            
+
             peer.on('stream', remoteStream => {
                 if (isVideo) {
                     remoteVideo.srcObject = remoteStream;
@@ -704,7 +707,7 @@
                     remoteAudio.srcObject = remoteStream;
                 }
             });
-            
+
             peer.on('connect', () => {
                 console.log(`Conectado com o peer ${partnerId}`);
                 if (isVideo) {
@@ -719,7 +722,7 @@
                     document.getElementById(`audio-${partnerId}`).remove();
                 }
             });
-            
+
             peer.on('error', err => {
                 console.error(`Erro no peer com ${partnerId}:`, err);
             });
@@ -742,7 +745,7 @@
                     video: true,
                     audio: true
                 });
-                
+
                 // Atualiza o estado da sala no Firestore para indicar que o host está transmitindo
                 const roomRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms`, currentRoomId);
                 await firebaseApp.updateDoc(roomRef, { isBroadcasting: true });
@@ -785,14 +788,14 @@
         async function joinVoiceChat() {
             try {
                 localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                
+
                 voiceStatusText.textContent = 'Conectado no Voice Chat!';
                 voiceStatusIndicator.classList.remove('bg-gray-500');
                 voiceStatusIndicator.classList.add('bg-green-500');
                 btnJoinVoiceChat.textContent = 'Sair do Voice Chat';
                 voiceChatInfo.classList.add('hidden');
                 voiceChatActiveInfo.classList.remove('hidden');
-                
+
                 // Adiciona o stream de áudio local a todos os peers de voz existentes
                 voicePeers.forEach(peer => {
                     peer.addStream(localAudioStream);
@@ -819,11 +822,11 @@
                 btnToggleMute.innerHTML = isVoiceMuted ? '<i class="fas fa-microphone-slash"></i> Desmutar' : '<i class="fas fa-microphone"></i> Silenciar';
             }
         }
-        
+
         // Novo comando para limpar o chat
         async function clearChatAll() {
             const chatRef = firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/chat`);
-            
+
             try {
                 // Adiciona uma mensagem do sistema para que todos vejam o aviso
                 await firebaseApp.addDoc(chatRef, {
@@ -838,7 +841,7 @@
                 // Pega todas as mensagens e apaga usando um "batch delete"
                 const q = firebaseApp.query(chatRef);
                 const querySnapshot = await firebaseApp.getDocs(q);
-                
+
                 const batch = firebaseApp.writeBatch(db);
                 querySnapshot.forEach((doc) => {
                     // Não apaga a mensagem do sistema recém-criada
@@ -875,7 +878,7 @@
             }
 
             const chatRef = firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/chat`);
-            
+
             try {
                 await firebaseApp.addDoc(chatRef, {
                     username: username,
@@ -896,7 +899,7 @@
         // === LISTENERS ===
         function setupRoomListeners() {
             const roomRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms`, currentRoomId);
-            
+
             const unsubRoom = firebaseApp.onSnapshot(roomRef, doc => {
                 if (!doc.exists()) {
                     showCustomModal("A sala foi fechada pelo anfitrião.");
@@ -916,7 +919,7 @@
                 }
             });
             unsubscribers.push(unsubRoom);
-            
+
             const unsubParticipants = firebaseApp.onSnapshot(firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/participants`), snapshot => {
                 participantsList.innerHTML = '';
                 const participantIds = new Set();
@@ -927,7 +930,7 @@
                     li.textContent = `${participant.username} ${doc.id === userId ? '(Você)' : ''} - ID: ${doc.id}`;
                     participantsList.appendChild(li);
                 });
-                
+
                 // Host (vídeo): gerencia conexões de vídeo
                 if (isRoomCreator && localVideoStream) {
                     participantIds.forEach(id => {
@@ -945,7 +948,7 @@
                         }
                     });
                 }
-                
+
                 // Remove peers para participantes que saíram
                 peers.forEach((peer, id) => {
                     if (!participantIds.has(id)) {
@@ -975,21 +978,21 @@
                         if (!peer) {
                             peer = createPeer(senderId, false, null, peerMap, isVideo);
                         }
-                        
+
                         // Parse the signal data since Firestore stores it as a string
                         peer.signal(JSON.parse(signalData.data));
-                        
+
                         firebaseApp.deleteDoc(change.doc.ref).catch(err => console.error("Erro ao deletar documento de sinal:", err));
                     }
                 });
             });
             unsubscribers.push(unsubSignals);
-            
+
             const unsubChat = firebaseApp.onSnapshot(firebaseApp.collection(db, `artifacts/${appId}/public/data/movie-rooms/${currentRoomId}/chat`), snapshot => {
                 snapshot.docChanges().forEach(change => {
                     if (change.type === 'added') {
                         const msg = change.doc.data();
-                        
+
                         // Adiciona a leitura por voz se o TTS estiver ativado e a mensagem não for do próprio usuário
                         if (isTtsEnabled && msg.senderId !== userId) {
                             // Não exibe mais o aviso
@@ -997,7 +1000,7 @@
                         }
 
                         if (msg.senderId === userId && !msg.isSystem) {
-                            return; 
+                            return;
                         }
                         showMessage(msg.text, msg.username, msg.isSystem, msg.isAI);
                     }
@@ -1005,20 +1008,20 @@
             });
             unsubscribers.push(unsubChat);
         }
-        
+
         // === EVENT LISTENERS DO DOM ===
         btnCreateRoom.addEventListener('click', createRoom);
         btnJoinRoom.addEventListener('click', joinRoom);
         btnLeaveRoom.addEventListener('click', () => leaveRoom(true));
-        
+
         btnStartShare.addEventListener('click', startScreenShare);
-        
+
         pipButton.addEventListener('click', () => {
             if (remoteVideo.requestPictureInPicture) {
                 remoteVideo.requestPictureInPicture();
             }
         });
-        
+
         toggleChatMode.addEventListener('click', () => {
             const isTextChatVisible = !textChatView.classList.contains('hidden');
             if (isTextChatVisible) {
@@ -1032,134 +1035,105 @@
             }
         });
 
-        // Botão TTS: um clique para ligar/desligar, um clique direito para abrir o menu de voz
-        toggleTtsChat.addEventListener('click', () => {
-            isTtsEnabled = !isTtsEnabled;
-            if (isTtsEnabled) {
-                toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-green-500"></i>';
-            } else {
-                toggleTtsChat.innerHTML = '<i class="fas fa-volume-up text-white"></i>';
-            }
-        });
-        
-        toggleTtsChat.addEventListener('contextmenu', (e) => {
-            e.preventDefault(); // Impede o menu de contexto padrão
-            populateVoiceList();
-            voiceModal.style.display = 'block';
-        });
+        sendChatBtn.addEventListener('click', sendChatMessage);
 
-        // Adiciona um listener de teclado ao botão para acessibilidade
-        toggleTtsChat.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                populateVoiceList();
-                voiceModal.style.display = 'block';
-            }
-        });
-        
         chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 sendChatMessage();
             }
         });
-        sendChatBtn.addEventListener('click', sendChatMessage);
-        
+
         btnJoinVoiceChat.addEventListener('click', () => {
-            if (!localAudioStream) {
-                joinVoiceChat();
-            } else {
+            if (localAudioStream) {
+                // Sair do voice chat
                 localAudioStream.getTracks().forEach(track => track.stop());
                 localAudioStream = null;
-                voicePeers.forEach(peer => { peer.destroy(); });
+                voicePeers.forEach(p => p.destroy());
                 voicePeers.clear();
-                
+                audioElements.innerHTML = ''; // Limpa os elementos de áudio
+
                 voiceStatusText.textContent = 'Pronto para entrar';
                 voiceStatusIndicator.classList.remove('bg-green-500');
                 voiceStatusIndicator.classList.add('bg-gray-500');
                 btnJoinVoiceChat.textContent = 'Entrar no Voice Chat';
                 voiceChatInfo.classList.remove('hidden');
                 voiceChatActiveInfo.classList.add('hidden');
+            } else {
+                // Entrar no voice chat
+                joinVoiceChat();
             }
         });
-        
+
         btnToggleMute.addEventListener('click', toggleMute);
 
-        // Modais
+        // TTS
+        toggleTtsChat.addEventListener('click', () => {
+            if (!selectedVoice) {
+                voiceModal.style.display = 'block';
+                return;
+            }
+            isTtsEnabled = !isTtsEnabled;
+            toggleTtsChat.classList.toggle('text-white', isTtsEnabled);
+            toggleTtsChat.classList.toggle('text-gray-400', !isTtsEnabled);
+        });
+
         btnShowParticipants.addEventListener('click', () => {
             participantsModal.style.display = 'block';
         });
 
         closeModal.forEach(btn => {
-            btn.addEventListener('click', () => {
-                btn.closest('.modal').style.display = 'none';
+            btn.addEventListener('click', (e) => {
+                e.target.closest('.modal').style.display = 'none';
             });
         });
 
-        // Adiciona listener para o novo modal de voz
-        document.getElementById('closeVoiceModal').addEventListener('click', () => {
-            voiceModal.style.display = 'none';
-        });
-        
-        window.addEventListener('click', (e) => {
-            if (e.target === participantsModal) {
-                participantsModal.style.display = 'none';
-            }
-            if (e.target === invitationModal) {
-                invitationModal.style.display = 'none';
-            }
-            if (e.target === voiceModal) {
-                voiceModal.style.display = 'none';
-            }
-        });
-
-        // Botão de Copiar Convite
-        copyInvitationBtn.addEventListener('click', () => {
-            const textToCopy = invitationText.textContent;
-            const tempInput = document.createElement('textarea');
-            tempInput.value = textToCopy;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            showCustomModal("Convite copiado para a área de transferência!");
-        });
-
-        // Eventos dos botões de IA
         btnGenerateInvitation.addEventListener('click', () => {
-            const prompt = `Crie um convite curto, casual e criativo para uma sessão de cinema online. O código da sala é ${currentRoomId}. O meu nome de usuário é ${username}. O convite deve ser divertido e usar emojis.`;
+            const prompt = `Gere um texto de convite para uma sala de cinema virtual. O código da sala é ${currentRoomId}. O nome do usuário que convida é ${username}. O texto deve ser animado e usar emojis.`;
             callGeminiApi(prompt, true);
         });
-        
+
+        copyInvitationBtn.addEventListener('click', () => {
+            const textToCopy = invitationText.textContent;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalText = copyInvitationBtn.textContent;
+                copyInvitationBtn.textContent = 'Copiado!';
+                setTimeout(() => {
+                    copyInvitationBtn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Erro ao copiar o texto: ', err);
+            });
+        });
+
         btnGenerateIcebreakers.addEventListener('click', () => {
-            const prompt = "Sugira 5 perguntas de quebra-gelo ou tópicos de conversa bem casuais para um grupo de amigos que está assistindo a um filme online. Formate como uma lista numerada.";
+            const prompt = `Gere 3 sugestões de perguntas ou tópicos para começar uma conversa em um chat com amigos. As sugestões devem ser simples e divertidas.`;
             callGeminiApi(prompt, false);
         });
 
-        // Chama a função de autenticação no carregamento da página
+        roomInput.addEventListener('input', () => {
+            roomInput.value = roomInput.value.toUpperCase();
+        });
+
+        // Limpa modais quando clicar fora deles
+        window.addEventListener('click', (event) => {
+            if (event.target == participantsModal) {
+                participantsModal.style.display = "none";
+            }
+            if (event.target == invitationModal) {
+                invitationModal.style.display = "none";
+            }
+            if (event.target == voiceModal) {
+                voiceModal.style.display = "none";
+            }
+        });
+        
+        // Chamada inicial para preencher a lista de vozes
+        populateVoiceList();
+        
+        // Inicia a autenticação do Firebase
         setupAuthAndUI();
 
-        // Código para o efeito de onda líquida ao clicar em todos os .glass-button
-        document.addEventListener('DOMContentLoaded', () => {
-            const glassButtons = document.querySelectorAll('.glass-button');
-            glassButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    const ripple = document.createElement('span');
-                    ripple.classList.add('ripple');
-                    const rect = this.getBoundingClientRect();
-                    const size = Math.max(rect.width, rect.height) * 1.5; // Multiplicar para garantir que cubra o botão
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    ripple.style.width = ripple.style.height = `${size}px`;
-                    ripple.style.left = `${x - size / 2}px`;
-                    ripple.style.top = `${y - size / 2}px`;
-                    this.appendChild(ripple);
-                    ripple.addEventListener('animationend', () => {
-                        ripple.remove();
-                    });
-                });
-            });
-        });
     </script>
 </body>
 </html>
