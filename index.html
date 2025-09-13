@@ -356,6 +356,7 @@
         // === FUNÇÕES AUXILIARES ===
 
         function showCustomModal(message) {
+            console.log("Tentando exibir um pop-up de erro:", message);
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 flex items-center justify-center bg-black bg-opacity-75 z-50 p-4';
             modal.innerHTML = `
@@ -565,27 +566,43 @@
         }
 
         async function joinRoom(code) {
-            if (!code) {
-                username = usernameInput.value.trim();
-                code = roomInput.value.trim().toUpperCase();
-                if (!userId || !username) return showCustomModal('Por favor, insira um nome de usuário válido.');
-                if (!code) return showCustomModal('Por favor, insira um código de sala válido.');
-                if (!checkWebRTCSupport()) return;
-                btnJoinRoom.disabled = true;
-                btnJoinRoom.textContent = 'Entrando...';
-            }
+            username = usernameInput.value.trim();
+            const enteredCode = code || roomInput.value.trim().toUpperCase();
 
-            const roomRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms`, code);
+            // Adicionando logs para depuração
+            console.log("Tentativa de entrar na sala...");
+            console.log("Nome de usuário digitado:", username);
+            console.log("Código da sala digitado:", enteredCode);
+
+            if (!userId) {
+                 showCustomModal('Aguarde a autenticação para entrar na sala.');
+                 return;
+            }
+            if (!username) {
+                showCustomModal('Por favor, insira um nome de usuário válido.');
+                return;
+            }
+            if (!enteredCode) {
+                showCustomModal('Por favor, insira um código de sala válido.');
+                return;
+            }
+            if (!checkWebRTCSupport()) return;
+
+            btnJoinRoom.disabled = true;
+            btnJoinRoom.textContent = 'Entrando...';
+            
+            currentRoomId = enteredCode;
+
+            const roomRef = firebaseApp.doc(db, `artifacts/${appId}/public/data/movie-rooms`, currentRoomId);
             const roomSnapshot = await firebaseApp.getDoc(roomRef);
 
             if (!roomSnapshot.exists()) {
-                showCustomModal(`A sala "${code}" não foi encontrada.`);
+                showCustomModal(`A sala "${currentRoomId}" não foi encontrada.`);
                 btnJoinRoom.disabled = false;
                 btnJoinRoom.textContent = 'Entrar';
                 return;
             }
 
-            currentRoomId = code;
             const roomData = roomSnapshot.data();
             if (roomData.creatorId === userId) {
                 isRoomCreator = true;
@@ -729,10 +746,6 @@
             return peer;
         }
 
-        async function initiateVideoPeer(partnerId) {
-            const peer = createPeer(partnerId, true, null, peers, true);
-        }
-
         async function initiateVoicePeer(partnerId) {
             const peer = createPeer(partnerId, true, localAudioStream, voicePeers, false);
         }
@@ -860,7 +873,27 @@
 
         async function sendChatMessage() {
             const messageText = chatInput.value.trim();
-            if (messageText === '') return;
+            const originalPlaceholder = chatInput.placeholder;
+
+            // Lógica para lidar com mensagens vazias
+            if (messageText === '') {
+                // 1. Envia a mensagem de erro para o console
+                console.error("ERRO: Não é possivel enviar mensagem vazia");
+
+                // 2. Mostra a mensagem de erro na caixa de texto
+                chatInput.placeholder = "Não é possível enviar uma mensagem vazia!";
+                chatInput.classList.add('text-red-500', 'border-red-500');
+                chatInput.disabled = true; // Desabilita a edição
+
+                // 3. Agenda o retorno ao estado normal após 5 segundos
+                setTimeout(() => {
+                    chatInput.placeholder = originalPlaceholder;
+                    chatInput.classList.remove('text-red-500', 'border-red-500');
+                    chatInput.disabled = false; // Habilita a edição novamente
+                }, 5000); // 5000 milissegundos = 5 segundos
+                
+                return; // Impede que o restante da função seja executado
+            }
 
             // Checa se o comando /cca foi usado
             if (messageText === '/cca') {
@@ -927,25 +960,30 @@
                     const li = document.createElement('li');
                     li.textContent = `${participant.username} ${doc.id === userId ? '(Você)' : ''} - ID: ${doc.id}`;
                     participantsList.appendChild(li);
+
+                    // === CORREÇÃO DO BUG ===
+                    // A nova lógica cria um peer para cada novo participante assim que ele entra,
+                    // independentemente se o vídeo já está sendo transmitido ou não.
+                    // Isso garante que a conexão WebRTC seja estabelecida a tempo de receber o stream.
+                    
+                    // Se eu sou o host e há um novo participante, crio uma conexão com ele.
+                    if (isRoomCreator && doc.id !== userId && !peers.has(doc.id)) {
+                        console.log(`Host: Novo participante ${doc.id} detectado. Iniciando conexão WebRTC.`);
+                        const peer = createPeer(doc.id, true, null, peers, true);
+                        // Se o compartilhamento de tela já estiver ativo, adiciona o stream à nova conexão imediatamente.
+                        if (localVideoStream) {
+                            console.log('Host: Compartilhamento de tela já ativo, adicionando stream ao novo peer.');
+                            peer.addStream(localVideoStream);
+                        }
+                    }
+
+                    // Se eu sou um participante e o host está transmitindo, inicio a conexão com o host.
+                    // Isso pode ser redundante com a lógica do host, mas garante a conexão.
+                    if (!isRoomCreator && roomSnapshot.data().isBroadcasting && !peers.has(roomSnapshot.data().creatorId)) {
+                        console.log(`Participante: Host está transmitindo. Iniciando conexão WebRTC com o host.`);
+                        createPeer(roomSnapshot.data().creatorId, false, null, peers, true);
+                    }
                 });
-
-                // Host (vídeo): gerencia conexões de vídeo
-                if (isRoomCreator && localVideoStream) {
-                    participantIds.forEach(id => {
-                        if (id !== userId && !peers.has(id)) {
-                             createPeer(id, true, localVideoStream, peers, true);
-                        }
-                    });
-                }
-
-                // Todos (áudio): gerencia conexões de voz
-                if (localAudioStream) {
-                    participantIds.forEach(id => {
-                        if (id !== userId && !voicePeers.has(id)) {
-                             createPeer(id, true, localAudioStream, voicePeers, false);
-                        }
-                    });
-                }
 
                 // Remove peers para participantes que saíram
                 peers.forEach((peer, id) => {
