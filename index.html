@@ -118,7 +118,6 @@
                 <input id="roomInput" placeholder="CÓDIGO DA SALA" maxlength="4" class="flex-grow p-4 rounded-lg bg-gray-700 text-white uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-600" />
                 <button id="btnJoinRoom" class="py-4 px-6 bg-gray-600 rounded-lg text-white font-bold hover:bg-gray-500 transition">Entrar</button>
             </div>
-            <p id="authStatus" class="text-gray-400 text-sm">Autenticando...</p>
         </div>
         <!-- UI da Aplicação -->
         <div id="app" class="hidden flex-col w-full gap-6">
@@ -244,7 +243,6 @@
         const btnJoinRoom = document.getElementById('btnJoinRoom');
         const roomInput = document.getElementById('roomInput');
         const usernameInput = document.getElementById('usernameInput');
-        const authStatus = document.getElementById('authStatus');
         const menu = document.getElementById('menu');
         const appUi = document.getElementById('app');
         const roomCodeDisplay = document.getElementById('roomCodeDisplay');
@@ -418,30 +416,22 @@
 
 
         // === AUTENTICAÇÃO E INICIALIZAÇÃO ===
-        async function authenticateUser() {
+        async function setupAuthAndUI() {
             try {
+                // Usa o token inicial se disponível, caso contrário, entra anonimamente
                 if (initialAuthToken) {
                     await firebaseApp.signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await firebaseApp.signInAnonymously(auth);
                 }
+                userId = auth.currentUser.uid;
+                // A UI já está pronta para o usuário interagir, não precisa de mais nada
             } catch (err) {
-                authStatus.textContent = 'Falha na autenticação: ' + err.message;
+                console.error("Falha na autenticação:", err);
+                showCustomModal('Falha na autenticação. Recarregue a página.');
             }
         }
-        
-        firebaseApp.onAuthStateChanged(auth, user => {
-            if (user) {
-                userId = user.uid;
-                authStatus.textContent = 'Conectado com sucesso!';
-                btnCreateRoom.disabled = false;
-                btnJoinRoom.disabled = false;
-            } else {
-                authStatus.textContent = 'Autenticando...';
-                authenticateUser();
-            }
-        });
-        
+
         // === GERAÇÃO DE CONTEÚDO COM IA ===
         async function callGeminiApi(prompt, isInvitation) {
             const button = isInvitation ? btnGenerateInvitation : btnGenerateIcebreakers;
@@ -1090,6 +1080,9 @@
             const prompt = "Sugira 5 perguntas de quebra-gelo ou tópicos de conversa bem casuais para um grupo de amigos que está assistindo a um filme online. Formate como uma lista numerada.";
             callGeminiApi(prompt, false);
         });
+
+        // Chama a função de autenticação no carregamento da página
+        setupAuthAndUI();
 
     </script>
 </body>
